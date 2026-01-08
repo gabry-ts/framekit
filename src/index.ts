@@ -19,3 +19,4 @@ export {
   ParseError,
   IOError,
 } from './errors';
+export { BitArray } from './storage/bitarray';
