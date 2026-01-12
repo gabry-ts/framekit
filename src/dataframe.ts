@@ -59,6 +59,24 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
     return result as S;
   }
 
+  *[Symbol.iterator](): Iterator<S> {
+    for (let i = 0; i < this.length; i++) {
+      yield this.row(i);
+    }
+  }
+
+  rows(): Iterator<S> {
+    return this[Symbol.iterator]();
+  }
+
+  toArray(): S[] {
+    const result: S[] = [];
+    for (let i = 0; i < this.length; i++) {
+      result.push(this.row(i));
+    }
+    return result;
+  }
+
   clone(): DataFrame<S> {
     const clonedColumns = new Map<string, Column<unknown>>();
     for (const [name, col] of this._columns) {
