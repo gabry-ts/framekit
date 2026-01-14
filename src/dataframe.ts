@@ -1,6 +1,6 @@
 import { DType } from './types/dtype';
-import type { SampleOptions } from './types/options';
-import { ColumnNotFoundError, ErrorCode, FrameKitError, ShapeMismatchError } from './errors';
+import type { CSVReadOptions, CSVWriteOptions, SampleOptions } from './types/options';
+import { ColumnNotFoundError, ErrorCode, FrameKitError, IOError, ShapeMismatchError } from './errors';
 import { Column } from './storage/column';
 import { Float64Column, Int32Column } from './storage/numeric';
 import { Utf8Column } from './storage/string';
@@ -8,6 +8,8 @@ import { BooleanColumn } from './storage/boolean';
 import { DateColumn } from './storage/date';
 import { Series } from './series';
 import { Expr, col } from './expr/expr';
+import { parseCSV } from './io/csv/parser';
+import { writeCSV } from './io/csv/writer';
 
 export class DataFrame<S extends Record<string, unknown> = Record<string, unknown>> {
   private readonly _columns: Map<string, Column<unknown>>;
@@ -585,6 +587,70 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
   static empty<S extends Record<string, unknown> = Record<string, unknown>>(): DataFrame<S> {
     return new DataFrame<S>(new Map(), []);
   }
+
+  static async fromCSV<S extends Record<string, unknown> = Record<string, unknown>>(
+    input: string,
+    options: CSVReadOptions & { parse?: 'string' } = {},
+  ): Promise<DataFrame<S>> {
+    let content: string;
+
+    if (options.parse === 'string') {
+      content = input;
+    } else {
+      // Treat input as a file path
+      try {
+        const fs = await import('fs/promises');
+        content = await fs.readFile(input, (options.encoding ?? 'utf-8') as BufferEncoding);
+      } catch (err) {
+        if (err instanceof IOError) throw err;
+        const message = err instanceof Error ? err.message : String(err);
+        throw new IOError(`Failed to read CSV file '${input}': ${message}`);
+      }
+    }
+
+    const parsed = parseCSV(content, options);
+    return buildDataFrameFromParsed<S>(parsed.header, parsed.columns, parsed.inferredTypes);
+  }
+
+  toCSV(options?: CSVWriteOptions): string;
+  toCSV(filePath: string, options?: CSVWriteOptions): Promise<void>;
+  toCSV(
+    filePathOrOptions?: string | CSVWriteOptions,
+    maybeOptions?: CSVWriteOptions,
+  ): string | Promise<void> {
+    let filePath: string | undefined;
+    let options: CSVWriteOptions;
+
+    if (typeof filePathOrOptions === 'string') {
+      filePath = filePathOrOptions;
+      options = maybeOptions ?? {};
+    } else {
+      options = filePathOrOptions ?? {};
+    }
+
+    const header = this._columnOrder;
+    const rows: unknown[][] = [];
+    for (let i = 0; i < this.length; i++) {
+      const row: unknown[] = [];
+      for (const name of this._columnOrder) {
+        row.push(this._columns.get(name)!.get(i));
+      }
+      rows.push(row);
+    }
+
+    const csvString = writeCSV(header, rows, options);
+
+    if (filePath) {
+      return import('fs/promises').then((fs) =>
+        fs.writeFile(filePath, csvString, 'utf-8').catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
+          throw new IOError(`Failed to write CSV file '${filePath}': ${message}`);
+        }),
+      );
+    }
+
+    return csvString;
+  }
 }
 
 function seededRandom(seed: number): () => number {
@@ -596,6 +662,44 @@ function seededRandom(seed: number): () => number {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+function buildDataFrameFromParsed<S extends Record<string, unknown>>(
+  header: string[],
+  rawColumns: Record<string, (string | null)[]>,
+  inferredTypes: Record<string, DType>,
+): DataFrame<S> {
+  if (header.length === 0) {
+    return DataFrame.empty<S>();
+  }
+
+  const columns = new Map<string, Column<unknown>>();
+  for (const name of header) {
+    const dtype = inferredTypes[name] ?? DType.Utf8;
+    const rawValues = rawColumns[name]!;
+    const typedValues = convertColumnValues(rawValues, dtype);
+    columns.set(name, buildColumn(dtype, typedValues));
+  }
+
+  return new DataFrame<S>(columns, [...header]);
+}
+
+function convertColumnValues(values: (string | null)[], dtype: DType): unknown[] {
+  switch (dtype) {
+    case DType.Float64:
+    case DType.Int32:
+      return values.map((v) => (v === null ? null : Number(v)));
+    case DType.Boolean:
+      return values.map((v) => {
+        if (v === null) return null;
+        return v.toLowerCase() === 'true';
+      });
+    case DType.Date:
+      return values.map((v) => (v === null ? null : new Date(v)));
+    case DType.Utf8:
+    default:
+      return values;
+  }
 }
 
 function detectDType(values: unknown[]): DType {
