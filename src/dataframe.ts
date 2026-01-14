@@ -7,6 +7,7 @@ import { Utf8Column } from './storage/string';
 import { BooleanColumn } from './storage/boolean';
 import { DateColumn } from './storage/date';
 import { Series } from './series';
+import { Expr, col } from './expr/expr';
 
 export class DataFrame<S extends Record<string, unknown> = Record<string, unknown>> {
   private readonly _columns: Map<string, Column<unknown>>;
@@ -138,19 +139,32 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
 
   withColumn<K extends string, V>(
     name: K,
-    valuesOrFn: V[] | ((row: S) => V),
+    valuesOrFnOrExpr: V[] | ((row: S) => V) | Expr<V>,
   ): DataFrame<S & Record<K, V>> {
     type Result = S & Record<K, V>;
+
+    if (valuesOrFnOrExpr instanceof Expr) {
+      const series = valuesOrFnOrExpr.evaluate(this as DataFrame);
+      const newColumns = new Map<string, Column<unknown>>(this._columns);
+      newColumns.set(name, series.column);
+
+      const newOrder = this._columnOrder.includes(name)
+        ? [...this._columnOrder]
+        : [...this._columnOrder, name];
+
+      return new DataFrame<Result>(newColumns, newOrder);
+    }
+
     let columnValues: V[];
 
-    if (typeof valuesOrFn === 'function') {
-      const fn = valuesOrFn as (row: S) => V;
+    if (typeof valuesOrFnOrExpr === 'function') {
+      const fn = valuesOrFnOrExpr as (row: S) => V;
       columnValues = [];
       for (let i = 0; i < this.length; i++) {
         columnValues.push(fn(this.row(i)));
       }
     } else {
-      columnValues = valuesOrFn;
+      columnValues = valuesOrFnOrExpr;
       if (columnValues.length !== this.length) {
         throw new ShapeMismatchError(
           `Column '${name}' has length ${columnValues.length}, expected ${this.length}`,
@@ -159,10 +173,10 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
     }
 
     const dtype = detectDType(columnValues as unknown[]);
-    const col = buildColumn(dtype, columnValues as unknown[]);
+    const newCol = buildColumn(dtype, columnValues as unknown[]);
 
     const newColumns = new Map<string, Column<unknown>>(this._columns);
-    newColumns.set(name, col);
+    newColumns.set(name, newCol);
 
     const newOrder = this._columnOrder.includes(name)
       ? [...this._columnOrder]
@@ -191,19 +205,43 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
     return new DataFrame<S>(newColumns, newOrder);
   }
 
-  filter(predicate: (row: S) => boolean): DataFrame<S> {
+  filter(predicateOrExpr: ((row: S) => boolean) | Expr<boolean>): DataFrame<S> {
+    if (predicateOrExpr instanceof Expr) {
+      const boolSeries = predicateOrExpr.evaluate(this as DataFrame);
+      const indices: number[] = [];
+      for (let i = 0; i < this.length; i++) {
+        if (boolSeries.get(i) === true) {
+          indices.push(i);
+        }
+      }
+      return this._takeByIndices(indices);
+    }
+
+    const predicate = predicateOrExpr;
     const indices: number[] = [];
     for (let i = 0; i < this.length; i++) {
       if (predicate(this.row(i))) {
         indices.push(i);
       }
     }
-    const int32Indices = new Int32Array(indices);
-    const newColumns = new Map<string, Column<unknown>>();
-    for (const name of this._columnOrder) {
-      newColumns.set(name, this._columns.get(name)!.take(int32Indices));
+    return this._takeByIndices(indices);
+  }
+
+  where(column: string, op: '=' | '!=' | '>' | '>=' | '<' | '<=', value: unknown): DataFrame<S> {
+    const colExpr = col(column);
+    const litValue = value;
+    let expr: Expr<boolean>;
+
+    switch (op) {
+      case '=': expr = colExpr.eq(litValue); break;
+      case '!=': expr = colExpr.neq(litValue); break;
+      case '>': expr = colExpr.gt(litValue as never); break;
+      case '>=': expr = colExpr.gte(litValue as never); break;
+      case '<': expr = colExpr.lt(litValue as never); break;
+      case '<=': expr = colExpr.lte(litValue as never); break;
     }
-    return new DataFrame<S>(newColumns, [...this._columnOrder]);
+
+    return this.filter(expr);
   }
 
   sortBy(
