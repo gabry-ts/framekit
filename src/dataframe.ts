@@ -1,5 +1,5 @@
 import { DType } from './types/dtype';
-import type { CSVReadOptions, CSVWriteOptions, SampleOptions } from './types/options';
+import type { CSVReadOptions, CSVWriteOptions, JSONReadOptions, JSONWriteOptions, SampleOptions } from './types/options';
 import { ColumnNotFoundError, ErrorCode, FrameKitError, IOError, ShapeMismatchError } from './errors';
 import { Column } from './storage/column';
 import { Float64Column, Int32Column } from './storage/numeric';
@@ -10,6 +10,7 @@ import { Series } from './series';
 import { Expr, col } from './expr/expr';
 import { parseCSV } from './io/csv/parser';
 import { writeCSV } from './io/csv/writer';
+import { writeJSON, writeNDJSON } from './io/json/writer';
 
 export class DataFrame<S extends Record<string, unknown> = Record<string, unknown>> {
   private readonly _columns: Map<string, Column<unknown>>;
@@ -628,16 +629,7 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
       options = filePathOrOptions ?? {};
     }
 
-    const header = this._columnOrder;
-    const rows: unknown[][] = [];
-    for (let i = 0; i < this.length; i++) {
-      const row: unknown[] = [];
-      for (const name of this._columnOrder) {
-        row.push(this._columns.get(name)!.get(i));
-      }
-      rows.push(row);
-    }
-
+    const { header, rows } = this._extractRows();
     const csvString = writeCSV(header, rows, options);
 
     if (filePath) {
@@ -650,6 +642,133 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
     }
 
     return csvString;
+  }
+
+  static async fromJSON<S extends Record<string, unknown> = Record<string, unknown>>(
+    input: string,
+    options: JSONReadOptions & { parse?: 'string' } = {},
+  ): Promise<DataFrame<S>> {
+    let content: string;
+
+    if (options.parse === 'string') {
+      content = input;
+    } else {
+      try {
+        const fs = await import('fs/promises');
+        content = await fs.readFile(input, 'utf-8');
+      } catch (err) {
+        if (err instanceof IOError) throw err;
+        const message = err instanceof Error ? err.message : String(err);
+        throw new IOError(`Failed to read JSON file '${input}': ${message}`);
+      }
+    }
+
+    let parsed: unknown = JSON.parse(content);
+
+    // Navigate to nested path if specified (e.g. 'results.items')
+    if (options.path) {
+      const parts = options.path.split('.');
+      for (const part of parts) {
+        if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          parsed = (parsed as Record<string, unknown>)[part];
+        } else {
+          throw new IOError(`JSON path '${options.path}' not found: '${part}' is not an object`);
+        }
+      }
+    }
+
+    if (!Array.isArray(parsed)) {
+      throw new IOError('JSON content must be an array of objects');
+    }
+
+    return DataFrame.fromRows<S>(parsed as object[]);
+  }
+
+  toJSON(options?: JSONWriteOptions): string;
+  toJSON(filePath: string, options?: JSONWriteOptions): Promise<void>;
+  toJSON(
+    filePathOrOptions?: string | JSONWriteOptions,
+    maybeOptions?: JSONWriteOptions,
+  ): string | Promise<void> {
+    let filePath: string | undefined;
+    let options: JSONWriteOptions;
+
+    if (typeof filePathOrOptions === 'string') {
+      filePath = filePathOrOptions;
+      options = maybeOptions ?? {};
+    } else {
+      options = filePathOrOptions ?? {};
+    }
+
+    const { header, rows } = this._extractRows();
+    const jsonString = writeJSON(header, rows, options);
+
+    if (filePath) {
+      return import('fs/promises').then((fs) =>
+        fs.writeFile(filePath, jsonString, 'utf-8').catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
+          throw new IOError(`Failed to write JSON file '${filePath}': ${message}`);
+        }),
+      );
+    }
+
+    return jsonString;
+  }
+
+  static async fromNDJSON<S extends Record<string, unknown> = Record<string, unknown>>(
+    input: string,
+    options: { parse?: 'string' } = {},
+  ): Promise<DataFrame<S>> {
+    let content: string;
+
+    if (options.parse === 'string') {
+      content = input;
+    } else {
+      try {
+        const fs = await import('fs/promises');
+        content = await fs.readFile(input, 'utf-8');
+      } catch (err) {
+        if (err instanceof IOError) throw err;
+        const message = err instanceof Error ? err.message : String(err);
+        throw new IOError(`Failed to read NDJSON file '${input}': ${message}`);
+      }
+    }
+
+    const lines = content.split('\n').filter((line) => line.trim() !== '');
+    const rows: object[] = lines.map((line) => JSON.parse(line) as object);
+
+    return DataFrame.fromRows<S>(rows);
+  }
+
+  toNDJSON(): string;
+  toNDJSON(filePath: string): Promise<void>;
+  toNDJSON(filePath?: string): string | Promise<void> {
+    const { header, rows } = this._extractRows();
+    const ndjsonString = writeNDJSON(header, rows);
+
+    if (filePath) {
+      return import('fs/promises').then((fs) =>
+        fs.writeFile(filePath, ndjsonString, 'utf-8').catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
+          throw new IOError(`Failed to write NDJSON file '${filePath}': ${message}`);
+        }),
+      );
+    }
+
+    return ndjsonString;
+  }
+
+  private _extractRows(): { header: string[]; rows: unknown[][] } {
+    const header = this._columnOrder;
+    const rows: unknown[][] = [];
+    for (let i = 0; i < this.length; i++) {
+      const row: unknown[] = [];
+      for (const name of this._columnOrder) {
+        row.push(this._columns.get(name)!.get(i));
+      }
+      rows.push(row);
+    }
+    return { header, rows };
   }
 }
 
