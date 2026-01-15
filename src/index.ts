@@ -28,3 +28,15 @@ export { DateColumn } from './storage/date';
 export { Series } from './series';
 export { DataFrame } from './dataframe';
 export { Expr, NamedExpr, col, lit } from './expr/expr';
+
+import { DataFrame } from './dataframe';
+
+/**
+ * Shorthand factory for creating a DataFrame from an array of objects.
+ * Equivalent to DataFrame.fromRows(rows).
+ */
+export function df<S extends Record<string, unknown> = Record<string, unknown>>(
+  rows: object[],
+): DataFrame<S> {
+  return DataFrame.fromRows<S>(rows);
+}
