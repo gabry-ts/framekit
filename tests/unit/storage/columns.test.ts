@@ -80,6 +80,30 @@ describe('Int32Column', () => {
     expect(() => col.get(-1)).toThrow();
     expect(() => col.get(1)).toThrow();
   });
+
+  it('filter by boolean mask', () => {
+    const col = Int32Column.from([10, 20, 30, 40]);
+    const mask = BooleanColumn.from([true, false, true, false]);
+    const filtered = col.filter(mask);
+    expect(filtered.length).toBe(2);
+    expect(filtered.get(0)).toBe(10);
+    expect(filtered.get(1)).toBe(30);
+  });
+
+  it('filter preserves nulls', () => {
+    const col = Int32Column.from([1, null, 3]);
+    const mask = BooleanColumn.from([true, true, false]);
+    const filtered = col.filter(mask);
+    expect(filtered.length).toBe(2);
+    expect(filtered.get(0)).toBe(1);
+    expect(filtered.get(1)).toBeNull();
+  });
+
+  it('filter throws on mask length mismatch', () => {
+    const col = Int32Column.from([1, 2]);
+    const mask = BooleanColumn.from([true]);
+    expect(() => col.filter(mask)).toThrow();
+  });
 });
 
 describe('Utf8Column', () => {
@@ -135,6 +159,39 @@ describe('Utf8Column', () => {
     const col = Utf8Column.from(['a']);
     expect(() => col.get(-1)).toThrow();
     expect(() => col.get(1)).toThrow();
+  });
+
+  it('filter by boolean mask', () => {
+    const col = Utf8Column.from(['a', 'b', 'c', 'd']);
+    const mask = BooleanColumn.from([false, true, false, true]);
+    const filtered = col.filter(mask);
+    expect(filtered.length).toBe(2);
+    expect(filtered.get(0)).toBe('b');
+    expect(filtered.get(1)).toBe('d');
+  });
+
+  it('filter preserves nulls', () => {
+    const col = Utf8Column.from(['a', null, 'c']);
+    const mask = BooleanColumn.from([true, true, false]);
+    const filtered = col.filter(mask);
+    expect(filtered.length).toBe(2);
+    expect(filtered.get(0)).toBe('a');
+    expect(filtered.get(1)).toBeNull();
+  });
+
+  it('filter returns empty on all-false mask', () => {
+    const col = Utf8Column.from(['a', 'b']);
+    const mask = BooleanColumn.from([false, false]);
+    const filtered = col.filter(mask);
+    expect(filtered.length).toBe(0);
+  });
+
+  it('handles empty strings', () => {
+    const col = Utf8Column.from(['', 'hello', '']);
+    expect(col.length).toBe(3);
+    expect(col.nullCount).toBe(0);
+    expect(col.get(0)).toBe('');
+    expect(col.get(2)).toBe('');
   });
 });
 
@@ -192,6 +249,29 @@ describe('BooleanColumn', () => {
     expect(() => col.get(-1)).toThrow();
     expect(() => col.get(1)).toThrow();
   });
+
+  it('filter by boolean mask', () => {
+    const col = BooleanColumn.from([true, false, true, false]);
+    const mask = BooleanColumn.from([true, true, false, false]);
+    const filtered = col.filter(mask);
+    expect(filtered.length).toBe(2);
+    expect(filtered.get(0)).toBe(true);
+    expect(filtered.get(1)).toBe(false);
+  });
+
+  it('filter preserves nulls', () => {
+    const col = BooleanColumn.from([true, null, false]);
+    const mask = BooleanColumn.from([true, true, true]);
+    const filtered = col.filter(mask);
+    expect(filtered.length).toBe(3);
+    expect(filtered.get(1)).toBeNull();
+  });
+
+  it('all-null column', () => {
+    const col = BooleanColumn.from([null, null, null]);
+    expect(col.length).toBe(3);
+    expect(col.nullCount).toBe(3);
+  });
 });
 
 describe('DateColumn', () => {
@@ -223,6 +303,16 @@ describe('DateColumn', () => {
     expect(col.get(0)!.getTime()).toBe(d1.getTime());
     expect(col.get(1)).toBeNull();
     expect(col.get(2)!.getTime()).toBe(d3.getTime());
+  });
+
+  it('stores epoch-ms internally', () => {
+    const col = DateColumn.from([d1, d2]);
+    const retrieved1 = col.get(0)!;
+    const retrieved2 = col.get(1)!;
+    expect(retrieved1.getTime()).toBe(d1.getTime());
+    expect(retrieved2.getTime()).toBe(d2.getTime());
+    // Verify returned Date is a new instance (not the original)
+    expect(retrieved1).not.toBe(d1);
   });
 
   it('slice preserves nulls', () => {
@@ -258,5 +348,31 @@ describe('DateColumn', () => {
     const col = DateColumn.from([d1]);
     expect(() => col.get(-1)).toThrow();
     expect(() => col.get(1)).toThrow();
+  });
+
+  it('filter by boolean mask', () => {
+    const col = DateColumn.from([d1, d2, d3]);
+    const mask = BooleanColumn.from([true, false, true]);
+    const filtered = col.filter(mask);
+    expect(filtered.length).toBe(2);
+    expect(filtered.get(0)!.getTime()).toBe(d1.getTime());
+    expect(filtered.get(1)!.getTime()).toBe(d3.getTime());
+  });
+
+  it('filter preserves nulls', () => {
+    const col = DateColumn.from([d1, null, d3]);
+    const mask = BooleanColumn.from([false, true, true]);
+    const filtered = col.filter(mask);
+    expect(filtered.length).toBe(2);
+    expect(filtered.get(0)).toBeNull();
+    expect(filtered.get(1)!.getTime()).toBe(d3.getTime());
+  });
+
+  it('all-null column', () => {
+    const col = DateColumn.from([null, null]);
+    expect(col.length).toBe(2);
+    expect(col.nullCount).toBe(2);
+    expect(col.get(0)).toBeNull();
+    expect(col.get(1)).toBeNull();
   });
 });
