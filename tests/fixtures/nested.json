@@ -1,0 +1,13 @@
+{
+  "meta": {
+    "total": 3,
+    "page": 1
+  },
+  "results": {
+    "items": [
+      { "id": 1, "product": "Widget", "price": 9.99 },
+      { "id": 2, "product": "Gadget", "price": 24.50 },
+      { "id": 3, "product": "Doohickey", "price": 4.75 }
+    ]
+  }
+}

@@ -1,0 +1,5 @@
+{"timestamp":"2024-01-15T10:00:00Z","level":"INFO","message":"Server started","code":200}
+{"timestamp":"2024-01-15T10:01:23Z","level":"WARN","message":"High memory usage","code":null}
+{"timestamp":"2024-01-15T10:02:45Z","level":"ERROR","message":"Connection timeout","code":504}
+{"timestamp":"2024-01-15T10:03:12Z","level":"INFO","message":"Request processed","code":200}
+{"timestamp":"2024-01-15T10:04:00Z","level":"DEBUG","message":"Cache hit","code":200}

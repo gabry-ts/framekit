@@ -1,0 +1,7 @@
+[
+  { "name": "Alice", "age": 30, "email": "alice@example.com", "active": true },
+  { "name": "Bob", "age": 25, "email": "bob@example.com", "active": false },
+  { "name": "Charlie", "age": 35, "email": null, "active": true },
+  { "name": "Diana", "age": 28, "email": "diana@example.com", "active": true },
+  { "name": "Eve", "age": null, "email": "eve@example.com", "active": false }
+]
