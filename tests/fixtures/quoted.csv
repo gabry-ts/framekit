@@ -1,0 +1,9 @@
+name,description,value
+"Simple","No special chars",1
+"With, comma","Field contains a comma",2
+"With ""quotes""","Escaped quotes inside",3
+"Multi
+line","Field spans
+two lines",4
+"All ""combined, with
+newline""","Everything at once",5

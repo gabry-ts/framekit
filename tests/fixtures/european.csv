@@ -1,0 +1,4 @@
+name;price;quantity;active
+Alice;1234;10;true
+Bob;5678;20;false
+Charlie;9012;30;true
