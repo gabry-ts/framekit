@@ -207,6 +207,76 @@ export class GroupBy<
     return Float64Column.from(values as (number | null)[]);
   }
 
+  count(): DataFrame<Record<string, unknown>> {
+    // Count rows per group — no column argument needed
+    const groupEntries = [...this._groupMap.entries()];
+    const keyCols = this._keys.map((k) => this._df.col(k).column);
+
+    const keyValues: Map<string, unknown[]> = new Map();
+    for (const k of this._keys) {
+      keyValues.set(k, []);
+    }
+    const counts: (number | null)[] = [];
+
+    for (const [, indices] of groupEntries) {
+      const firstIndex = indices[0]!;
+      for (let ki = 0; ki < this._keys.length; ki++) {
+        keyValues.get(this._keys[ki]!)!.push(keyCols[ki]!.get(firstIndex));
+      }
+      counts.push(indices.length);
+    }
+
+    const resultColumns = new Map<string, Column<unknown>>();
+    const columnOrder: string[] = [];
+    for (let ki = 0; ki < this._keys.length; ki++) {
+      const k = this._keys[ki]!;
+      const vals = keyValues.get(k)!;
+      resultColumns.set(k, this._buildColumnLike(keyCols[ki]!, vals));
+      columnOrder.push(k);
+    }
+    resultColumns.set('count', Float64Column.from(counts));
+    columnOrder.push('count');
+
+    const Ctor = this._df.constructor as DataFrameConstructor;
+    return new Ctor<Record<string, unknown>>(resultColumns, columnOrder);
+  }
+
+  sum(column: string): DataFrame<Record<string, unknown>> {
+    return this.agg({ [column]: col(column).sum() as AggExpr<unknown> });
+  }
+
+  mean(column: string): DataFrame<Record<string, unknown>> {
+    return this.agg({ [column]: col(column).mean() as AggExpr<unknown> });
+  }
+
+  min(column: string): DataFrame<Record<string, unknown>> {
+    return this.agg({ [column]: col(column).min() as AggExpr<unknown> });
+  }
+
+  max(column: string): DataFrame<Record<string, unknown>> {
+    return this.agg({ [column]: col(column).max() as AggExpr<unknown> });
+  }
+
+  first(): DataFrame<Record<string, unknown>> {
+    // Return first row per group for all non-key columns
+    const nonKeyColumns = this._df.columns.filter((c) => !this._keys.includes(c as GroupKeys));
+    const specs: Record<string, AggExpr<unknown>> = {};
+    for (const c of nonKeyColumns) {
+      specs[c] = col(c).first() as AggExpr<unknown>;
+    }
+    return this.agg(specs);
+  }
+
+  last(): DataFrame<Record<string, unknown>> {
+    // Return last row per group for all non-key columns
+    const nonKeyColumns = this._df.columns.filter((c) => !this._keys.includes(c as GroupKeys));
+    const specs: Record<string, AggExpr<unknown>> = {};
+    for (const c of nonKeyColumns) {
+      specs[c] = col(c).last() as AggExpr<unknown>;
+    }
+    return this.agg(specs);
+  }
+
   groups(): Map<string, DataFrame<S>> {
     const result = new Map<string, DataFrame<S>>();
     for (const [key, indices] of this._groupMap) {

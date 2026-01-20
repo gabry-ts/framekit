@@ -311,4 +311,113 @@ describe('GroupBy', () => {
       expect(result.length).toBe(2);
     });
   });
+
+  describe('shorthand methods', () => {
+    it('count() returns region + count columns', () => {
+      const result = df.groupBy('region').count();
+      expect(result.columns).toEqual(['region', 'count']);
+      expect(result.length).toBe(2);
+
+      const rows = result.toArray();
+      const eastRow = rows.find((r) => r['region'] === 'East');
+      const westRow = rows.find((r) => r['region'] === 'West');
+      expect(eastRow!['count']).toBe(3);
+      expect(westRow!['count']).toBe(2);
+    });
+
+    it('sum(column) returns region + sum of column', () => {
+      const result = df.groupBy('region').sum('amount');
+      expect(result.columns).toEqual(['region', 'amount']);
+      expect(result.length).toBe(2);
+
+      const rows = result.toArray();
+      const eastRow = rows.find((r) => r['region'] === 'East');
+      const westRow = rows.find((r) => r['region'] === 'West');
+      expect(eastRow!['amount']).toBe(500);
+      expect(westRow!['amount']).toBe(500);
+    });
+
+    it('mean(column) returns region + mean of column', () => {
+      const result = df.groupBy('region').mean('amount');
+      expect(result.columns).toEqual(['region', 'amount']);
+
+      const rows = result.toArray();
+      const eastRow = rows.find((r) => r['region'] === 'East');
+      const westRow = rows.find((r) => r['region'] === 'West');
+      expect(eastRow!['amount']).toBeCloseTo(500 / 3);
+      expect(westRow!['amount']).toBe(250);
+    });
+
+    it('min(column) returns region + min of column', () => {
+      const result = df.groupBy('region').min('amount');
+      expect(result.columns).toEqual(['region', 'amount']);
+
+      const rows = result.toArray();
+      const eastRow = rows.find((r) => r['region'] === 'East');
+      const westRow = rows.find((r) => r['region'] === 'West');
+      expect(eastRow!['amount']).toBe(100);
+      expect(westRow!['amount']).toBe(200);
+    });
+
+    it('max(column) returns region + max of column', () => {
+      const result = df.groupBy('region').max('amount');
+      expect(result.columns).toEqual(['region', 'amount']);
+
+      const rows = result.toArray();
+      const eastRow = rows.find((r) => r['region'] === 'East');
+      const westRow = rows.find((r) => r['region'] === 'West');
+      expect(eastRow!['amount']).toBe(250);
+      expect(westRow!['amount']).toBe(300);
+    });
+
+    it('first() returns first row per group for all non-key columns', () => {
+      const result = df.groupBy('region').first();
+      expect(result.length).toBe(2);
+      expect(result.columns).toEqual(['region', 'product', 'amount']);
+
+      const rows = result.toArray();
+      const eastRow = rows.find((r) => r['region'] === 'East');
+      const westRow = rows.find((r) => r['region'] === 'West');
+      expect(eastRow!['product']).toBe('A');
+      expect(eastRow!['amount']).toBe(100);
+      expect(westRow!['product']).toBe('B');
+      expect(westRow!['amount']).toBe(200);
+    });
+
+    it('last() returns last row per group for all non-key columns', () => {
+      const result = df.groupBy('region').last();
+      expect(result.length).toBe(2);
+      expect(result.columns).toEqual(['region', 'product', 'amount']);
+
+      const rows = result.toArray();
+      const eastRow = rows.find((r) => r['region'] === 'East');
+      const westRow = rows.find((r) => r['region'] === 'West');
+      expect(eastRow!['product']).toBe('A');
+      expect(eastRow!['amount']).toBe(250);
+      expect(westRow!['product']).toBe('A');
+      expect(westRow!['amount']).toBe(300);
+    });
+
+    it('count() with multi-key groupBy', () => {
+      const result = df.groupBy('region', 'product').count();
+      expect(result.columns).toEqual(['region', 'product', 'count']);
+      expect(result.length).toBe(4);
+
+      const rows = result.toArray();
+      const eastA = rows.find((r) => r['region'] === 'East' && r['product'] === 'A');
+      expect(eastA!['count']).toBe(2);
+    });
+
+    it('sum() with nulls skips null values', () => {
+      type NullRow = { region: string; amount: number | null };
+      const nullDf = DataFrame.fromRows<NullRow>([
+        { region: 'East', amount: 100 },
+        { region: 'East', amount: null },
+        { region: 'East', amount: 200 },
+      ]);
+      const result = nullDf.groupBy('region').sum('amount');
+      const rows = result.toArray();
+      expect(rows[0]!['amount']).toBe(300);
+    });
+  });
 });
