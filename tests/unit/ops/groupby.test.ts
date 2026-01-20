@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DataFrame, GroupBy } from '../../../src';
+import { DataFrame, GroupBy, col } from '../../../src';
 
 describe('GroupBy', () => {
   const data = [
@@ -154,6 +154,161 @@ describe('GroupBy', () => {
     it('dataframe getter returns source DataFrame', () => {
       const gb = df.groupBy('region');
       expect(gb.dataframe).toBe(df);
+    });
+  });
+
+  describe('agg() with expression-based aggregations', () => {
+    it('computes sum aggregation per group', () => {
+      const result = df.groupBy('region').agg({
+        total: col('amount').sum(),
+      });
+      expect(result.length).toBe(2);
+      expect(result.columns).toEqual(['region', 'total']);
+
+      const rows = result.toArray();
+      const eastRow = rows.find((r) => r['region'] === 'East');
+      const westRow = rows.find((r) => r['region'] === 'West');
+      expect(eastRow!['total']).toBe(500); // 100 + 150 + 250
+      expect(westRow!['total']).toBe(500); // 200 + 300
+    });
+
+    it('computes multiple aggregations per group', () => {
+      const result = df.groupBy('region').agg({
+        total: col('amount').sum(),
+        avg: col('amount').mean(),
+      });
+      expect(result.length).toBe(2);
+      expect(result.columns).toEqual(['region', 'total', 'avg']);
+
+      const rows = result.toArray();
+      const eastRow = rows.find((r) => r['region'] === 'East');
+      expect(eastRow!['total']).toBe(500);
+      expect(eastRow!['avg']).toBeCloseTo(500 / 3);
+    });
+
+    it('supports min and max aggregations', () => {
+      const result = df.groupBy('region').agg({
+        min_amt: col('amount').min(),
+        max_amt: col('amount').max(),
+      });
+      const rows = result.toArray();
+      const eastRow = rows.find((r) => r['region'] === 'East');
+      expect(eastRow!['min_amt']).toBe(100);
+      expect(eastRow!['max_amt']).toBe(250);
+    });
+
+    it('supports count aggregation', () => {
+      const result = df.groupBy('region').agg({
+        n: col('amount').count(),
+      });
+      const rows = result.toArray();
+      const eastRow = rows.find((r) => r['region'] === 'East');
+      const westRow = rows.find((r) => r['region'] === 'West');
+      expect(eastRow!['n']).toBe(3);
+      expect(westRow!['n']).toBe(2);
+    });
+
+    it('supports first and last aggregations', () => {
+      const result = df.groupBy('region').agg({
+        first_amt: col('amount').first(),
+        last_amt: col('amount').last(),
+      });
+      const rows = result.toArray();
+      const eastRow = rows.find((r) => r['region'] === 'East');
+      expect(eastRow!['first_amt']).toBe(100);
+      expect(eastRow!['last_amt']).toBe(250);
+    });
+
+    it('result has one row per group', () => {
+      const result = df.groupBy('region', 'product').agg({
+        total: col('amount').sum(),
+      });
+      expect(result.length).toBe(4); // East-A, East-B, West-A, West-B
+      expect(result.columns).toEqual(['region', 'product', 'total']);
+    });
+
+    it('group key columns appear first, then aggregation columns', () => {
+      const result = df.groupBy('region').agg({
+        z_total: col('amount').sum(),
+        a_mean: col('amount').mean(),
+      });
+      expect(result.columns).toEqual(['region', 'z_total', 'a_mean']);
+    });
+
+    it('string shorthand: agg with string method names', () => {
+      const result = df.groupBy('region').agg({
+        amount: 'sum',
+      });
+      const rows = result.toArray();
+      const eastRow = rows.find((r) => r['region'] === 'East');
+      expect(eastRow!['amount']).toBe(500);
+    });
+
+    it('string shorthand: supports mean, min, max, count', () => {
+      const result = df.groupBy('region').agg({
+        amount: 'mean',
+      });
+      const rows = result.toArray();
+      const eastRow = rows.find((r) => r['region'] === 'East');
+      expect(eastRow!['amount']).toBeCloseTo(500 / 3);
+    });
+
+    it('string shorthand: supports first and last', () => {
+      const result = df.groupBy('region').agg({
+        amount: 'first',
+      });
+      const rows = result.toArray();
+      const eastRow = rows.find((r) => r['region'] === 'East');
+      expect(eastRow!['amount']).toBe(100);
+    });
+
+    it('handles null values in aggregation columns', () => {
+      type NullRow = { region: string; amount: number | null };
+      const nullDf = DataFrame.fromRows<NullRow>([
+        { region: 'East', amount: 100 },
+        { region: 'East', amount: null },
+        { region: 'East', amount: 200 },
+        { region: 'West', amount: null },
+        { region: 'West', amount: 300 },
+      ]);
+      const result = nullDf.groupBy('region').agg({
+        total: col('amount').sum(),
+        avg: col('amount').mean(),
+        n: col('amount').count(),
+      });
+      const rows = result.toArray();
+      const eastRow = rows.find((r) => r['region'] === 'East');
+      const westRow = rows.find((r) => r['region'] === 'West');
+      expect(eastRow!['total']).toBe(300);
+      expect(eastRow!['avg']).toBe(150);
+      expect(eastRow!['n']).toBe(2);
+      expect(westRow!['total']).toBe(300);
+      expect(westRow!['n']).toBe(1);
+    });
+
+    it('throws on unknown string shorthand', () => {
+      expect(() =>
+        df.groupBy('region').agg({ amount: 'invalid' }),
+      ).toThrow('Unknown aggregation method');
+    });
+
+    it('std aggregation works', () => {
+      const result = df.groupBy('region').agg({
+        amount_std: col('amount').std(),
+      });
+      const rows = result.toArray();
+      const eastRow = rows.find((r) => r['region'] === 'East');
+      // East amounts: 100, 150, 250 -> mean=500/3, std = sample std dev
+      expect(eastRow!['amount_std']).toBeGreaterThan(0);
+    });
+
+    it('mixed expression and shorthand in same agg call', () => {
+      const result = df.groupBy('region').agg({
+        total: col('amount').sum(),
+        amount: 'mean',
+      });
+      expect(result.columns).toEqual(['region', 'total', 'amount']);
+      expect(result.length).toBe(2);
     });
   });
 });
