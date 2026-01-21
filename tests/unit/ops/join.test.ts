@@ -366,3 +366,193 @@ describe('join type argument (US-032)', () => {
     expect(outer.length).toBe(2);
   });
 });
+
+describe('hashJoin — cross join (US-033)', () => {
+  it('produces cartesian product of both DataFrames', () => {
+    const l = DataFrame.fromRows([
+      { name: 'Alice' },
+      { name: 'Bob' },
+    ]);
+    const r = DataFrame.fromRows([
+      { color: 'red' },
+      { color: 'blue' },
+      { color: 'green' },
+    ]);
+    const result = l.join(r, [], 'cross');
+    expect(result.length).toBe(6); // 2 * 3
+    expect(result.columns).toEqual(['name', 'color']);
+    expect(result.col('name').toArray()).toEqual([
+      'Alice', 'Alice', 'Alice', 'Bob', 'Bob', 'Bob',
+    ]);
+    expect(result.col('color').toArray()).toEqual([
+      'red', 'blue', 'green', 'red', 'blue', 'green',
+    ]);
+  });
+
+  it('cross join with single-row DataFrames', () => {
+    const l = DataFrame.fromRows([{ a: 1 }]);
+    const r = DataFrame.fromRows([{ b: 2 }]);
+    const result = l.join(r, [], 'cross');
+    expect(result.length).toBe(1);
+    expect(result.col('a').toArray()).toEqual([1]);
+    expect(result.col('b').toArray()).toEqual([2]);
+  });
+
+  it('cross join renames duplicate columns with _right suffix', () => {
+    const l = DataFrame.fromRows([{ x: 1 }, { x: 2 }]);
+    const r = DataFrame.fromRows([{ x: 10 }, { x: 20 }]);
+    const result = l.join(r, [], 'cross');
+    expect(result.length).toBe(4);
+    expect(result.columns).toEqual(['x', 'x_right']);
+    expect(result.col('x').toArray()).toEqual([1, 1, 2, 2]);
+    expect(result.col('x_right').toArray()).toEqual([10, 20, 10, 20]);
+  });
+
+  it('cross join with multiple columns on each side', () => {
+    const l = DataFrame.fromRows([
+      { id: 1, name: 'A' },
+      { id: 2, name: 'B' },
+    ]);
+    const r = DataFrame.fromRows([
+      { size: 'S' },
+      { size: 'M' },
+    ]);
+    const result = l.join(r, [], 'cross');
+    expect(result.length).toBe(4);
+    expect(result.col('id').toArray()).toEqual([1, 1, 2, 2]);
+    expect(result.col('name').toArray()).toEqual(['A', 'A', 'B', 'B']);
+    expect(result.col('size').toArray()).toEqual(['S', 'M', 'S', 'M']);
+  });
+});
+
+describe('hashJoin — semi join (US-033)', () => {
+  const left = DataFrame.fromRows([
+    { id: 1, name: 'Alice' },
+    { id: 2, name: 'Bob' },
+    { id: 3, name: 'Charlie' },
+    { id: 4, name: 'Diana' },
+  ]);
+
+  const right = DataFrame.fromRows([
+    { id: 1, dept: 'Engineering' },
+    { id: 3, dept: 'Sales' },
+    { id: 5, dept: 'HR' },
+  ]);
+
+  it('returns only left rows that have a match in right', () => {
+    const result = left.join(right, 'id', 'semi');
+    expect(result.length).toBe(2);
+    expect(result.col('id').toArray()).toEqual([1, 3]);
+    expect(result.col('name').toArray()).toEqual(['Alice', 'Charlie']);
+  });
+
+  it('does not add right columns to result', () => {
+    const result = left.join(right, 'id', 'semi');
+    expect(result.columns).toEqual(['id', 'name']);
+  });
+
+  it('does not duplicate left rows for multiple right matches', () => {
+    const r = DataFrame.fromRows([
+      { id: 1, dept: 'Eng' },
+      { id: 1, dept: 'Sales' },
+      { id: 2, dept: 'HR' },
+    ]);
+    const result = left.join(r, 'id', 'semi');
+    expect(result.length).toBe(2); // id=1 appears once, id=2 appears once
+    expect(result.col('id').toArray()).toEqual([1, 2]);
+  });
+
+  it('null keys do not match in semi join', () => {
+    const l = DataFrame.fromRows([
+      { id: 1, val: 'a' },
+      { id: null, val: 'b' },
+      { id: 2, val: 'c' },
+    ]);
+    const r = DataFrame.fromRows([
+      { id: 1, score: 10 },
+      { id: null, score: 20 },
+    ]);
+    const result = l.join(r, 'id', 'semi');
+    expect(result.length).toBe(1);
+    expect(result.col('id').toArray()).toEqual([1]);
+  });
+
+  it('semi join with composite keys', () => {
+    const l = DataFrame.fromRows([
+      { a: 1, b: 'x', val: 10 },
+      { a: 1, b: 'y', val: 20 },
+      { a: 2, b: 'x', val: 30 },
+    ]);
+    const r = DataFrame.fromRows([
+      { a: 1, b: 'x', score: 100 },
+      { a: 2, b: 'y', score: 200 },
+    ]);
+    const result = l.join(r, ['a', 'b'], 'semi');
+    expect(result.length).toBe(1);
+    expect(result.col('a').toArray()).toEqual([1]);
+    expect(result.col('b').toArray()).toEqual(['x']);
+    expect(result.col('val').toArray()).toEqual([10]);
+  });
+});
+
+describe('hashJoin — anti join (US-033)', () => {
+  const left = DataFrame.fromRows([
+    { id: 1, name: 'Alice' },
+    { id: 2, name: 'Bob' },
+    { id: 3, name: 'Charlie' },
+    { id: 4, name: 'Diana' },
+  ]);
+
+  const right = DataFrame.fromRows([
+    { id: 1, dept: 'Engineering' },
+    { id: 3, dept: 'Sales' },
+    { id: 5, dept: 'HR' },
+  ]);
+
+  it('returns only left rows that do NOT have a match in right', () => {
+    const result = left.join(right, 'id', 'anti');
+    expect(result.length).toBe(2);
+    expect(result.col('id').toArray()).toEqual([2, 4]);
+    expect(result.col('name').toArray()).toEqual(['Bob', 'Diana']);
+  });
+
+  it('does not add right columns to result', () => {
+    const result = left.join(right, 'id', 'anti');
+    expect(result.columns).toEqual(['id', 'name']);
+  });
+
+  it('anti join returns all left rows when no matches exist', () => {
+    const r = DataFrame.fromRows([
+      { id: 10, dept: 'X' },
+      { id: 20, dept: 'Y' },
+    ]);
+    const result = left.join(r, 'id', 'anti');
+    expect(result.length).toBe(4);
+  });
+
+  it('anti join returns empty when all left rows match', () => {
+    const r = DataFrame.fromRows([
+      { id: 1, dept: 'A' },
+      { id: 2, dept: 'B' },
+      { id: 3, dept: 'C' },
+      { id: 4, dept: 'D' },
+    ]);
+    const result = left.join(r, 'id', 'anti');
+    expect(result.length).toBe(0);
+  });
+
+  it('null keys are included in anti join result (null never matches)', () => {
+    const l = DataFrame.fromRows([
+      { id: 1, val: 'a' },
+      { id: null, val: 'b' },
+      { id: 2, val: 'c' },
+    ]);
+    const r = DataFrame.fromRows([
+      { id: 1, score: 10 },
+      { id: null, score: 20 },
+    ]);
+    const result = l.join(r, 'id', 'anti');
+    expect(result.length).toBe(2); // null row + id=2
+    expect(result.col('val').toArray()).toEqual(['b', 'c']);
+  });
+});

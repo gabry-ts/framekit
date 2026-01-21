@@ -46,7 +46,116 @@ function buildColumnFromValues(dtype: DType, values: unknown[]): Column<unknown>
   }
 }
 
-export type JoinType = 'inner' | 'left' | 'right' | 'outer';
+export type JoinType = 'inner' | 'left' | 'right' | 'outer' | 'cross' | 'semi' | 'anti';
+
+function crossJoin<
+  L extends Record<string, unknown>,
+  R extends Record<string, unknown>,
+>(left: DataFrame<L>, right: DataFrame<R>): DataFrame<Record<string, unknown>> {
+  const resultLength = left.length * right.length;
+  const resultColumns = new Map<string, Column<unknown>>();
+  const columnOrder: string[] = [];
+
+  // Determine right column renames for duplicates
+  const rightColRenames = new Map<string, string>();
+  for (const rc of right.columns) {
+    if (left.columns.includes(rc)) {
+      rightColRenames.set(rc, `${rc}_right`);
+    } else {
+      rightColRenames.set(rc, rc);
+    }
+  }
+
+  // Left columns: each left row repeated right.length times
+  for (const colName of left.columns) {
+    const srcCol = left.col(colName).column;
+    const values: unknown[] = new Array(resultLength);
+    for (let li = 0; li < left.length; li++) {
+      const v = srcCol.get(li);
+      for (let ri = 0; ri < right.length; ri++) {
+        values[li * right.length + ri] = v;
+      }
+    }
+    resultColumns.set(colName, buildColumnFromValues(srcCol.dtype, values));
+    columnOrder.push(colName);
+  }
+
+  // Right columns: cycle through right rows for each left row
+  for (const colName of right.columns) {
+    const srcCol = right.col(colName).column;
+    const outputName = rightColRenames.get(colName)!;
+    const values: unknown[] = new Array(resultLength);
+    for (let li = 0; li < left.length; li++) {
+      for (let ri = 0; ri < right.length; ri++) {
+        values[li * right.length + ri] = srcCol.get(ri);
+      }
+    }
+    resultColumns.set(outputName, buildColumnFromValues(srcCol.dtype, values));
+    columnOrder.push(outputName);
+  }
+
+  const Ctor = left.constructor as DataFrameConstructor;
+  return new Ctor<Record<string, unknown>>(resultColumns, columnOrder);
+}
+
+function semiAntiJoin<
+  L extends Record<string, unknown>,
+  R extends Record<string, unknown>,
+>(
+  left: DataFrame<L>,
+  right: DataFrame<R>,
+  on: string | string[],
+  anti: boolean,
+): DataFrame<Record<string, unknown>> {
+  const keys = Array.isArray(on) ? on : [on];
+
+  for (const key of keys) {
+    if (!left.columns.includes(key)) {
+      throw new ColumnNotFoundError(key, left.columns);
+    }
+    if (!right.columns.includes(key)) {
+      throw new ColumnNotFoundError(key, right.columns);
+    }
+  }
+
+  // Build hash set from right side keys
+  const rightKeyCols = keys.map((k) => right.col(k).column);
+  const rightKeySet = new Set<string>();
+  for (let i = 0; i < right.length; i++) {
+    const keyStr = serializeKey(rightKeyCols, i);
+    if (keyStr !== null) {
+      rightKeySet.add(keyStr);
+    }
+  }
+
+  // Filter left rows by existence (semi) or non-existence (anti) in right key set
+  const leftKeyCols = keys.map((k) => left.col(k).column);
+  const matchedIndices: number[] = [];
+  for (let i = 0; i < left.length; i++) {
+    const keyStr = serializeKey(leftKeyCols, i);
+    const hasMatch = keyStr !== null && rightKeySet.has(keyStr);
+    if (anti ? !hasMatch : hasMatch) {
+      matchedIndices.push(i);
+    }
+  }
+
+  // Build result from left columns only (no right columns added)
+  const resultColumns = new Map<string, Column<unknown>>();
+  const columnOrder: string[] = [];
+
+  for (const colName of left.columns) {
+    const srcCol = left.col(colName).column;
+    const values: unknown[] = new Array(matchedIndices.length);
+    for (let i = 0; i < matchedIndices.length; i++) {
+      values[i] = srcCol.get(matchedIndices[i]!);
+    }
+    resultColumns.set(colName, buildColumnFromValues(srcCol.dtype, values));
+    columnOrder.push(colName);
+  }
+
+  const Ctor = left.constructor as DataFrameConstructor;
+  return new Ctor<Record<string, unknown>>(resultColumns, columnOrder);
+}
 
 export function hashJoin<
   L extends Record<string, unknown>,
@@ -57,6 +166,17 @@ export function hashJoin<
   on: string | string[],
   how: JoinType = 'inner',
 ): DataFrame<Record<string, unknown>> {
+  // Dispatch to specialized implementations
+  if (how === 'cross') {
+    return crossJoin(left, right);
+  }
+  if (how === 'semi') {
+    return semiAntiJoin(left, right, on, false);
+  }
+  if (how === 'anti') {
+    return semiAntiJoin(left, right, on, true);
+  }
+
   const keys = Array.isArray(on) ? on : [on];
 
   // Validate keys exist in both DataFrames
@@ -69,16 +189,12 @@ export function hashJoin<
     }
   }
 
-  // Determine build and probe sides
-  // For inner join: build hash table on smaller side, probe with larger
-  // For now, always build on right, probe with left (simplifies left/right/outer logic)
+  // Build hash table on right side
   const rightKeyCols = keys.map((k) => right.col(k).column);
-
-  // Build hash table: serialized key -> array of right indices
   const hashTable = new Map<string, number[]>();
   for (let i = 0; i < right.length; i++) {
     const keyStr = serializeKey(rightKeyCols, i);
-    if (keyStr === null) continue; // null keys don't match
+    if (keyStr === null) continue;
     const bucket = hashTable.get(keyStr);
     if (bucket) {
       bucket.push(i);
@@ -96,7 +212,6 @@ export function hashJoin<
   for (let i = 0; i < left.length; i++) {
     const keyStr = serializeKey(leftKeyCols, i);
     if (keyStr === null) {
-      // null keys: for left/outer, keep left row with null right side
       if (how === 'left' || how === 'outer') {
         leftIndices.push(i);
         rightIndices.push(null);
@@ -123,7 +238,7 @@ export function hashJoin<
   if (how === 'right' || how === 'outer') {
     for (let i = 0; i < right.length; i++) {
       if (!rightMatched.has(i)) {
-        leftIndices.push(-1); // -1 = no left match
+        leftIndices.push(-1);
         rightIndices.push(i);
       }
     }
@@ -134,7 +249,6 @@ export function hashJoin<
   const columnOrder: string[] = [];
   const resultLength = leftIndices.length;
 
-  // Determine right column names (avoid duplicates with left)
   const rightNonKeyCols = right.columns.filter((c) => !keys.includes(c));
   const leftNonKeyCols = left.columns.filter((c) => !keys.includes(c));
   const rightColRenames = new Map<string, string>();
@@ -146,7 +260,7 @@ export function hashJoin<
     }
   }
 
-  // Key columns (from left, or right when left is null)
+  // Key columns
   for (const key of keys) {
     const leftCol = left.col(key).column;
     const rightCol = right.col(key).column;
