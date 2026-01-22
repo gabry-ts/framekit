@@ -6,6 +6,7 @@ import { Utf8Column } from './storage/string';
 import { BooleanColumn } from './storage/boolean';
 import { DateColumn } from './storage/date';
 import { StringAccessor } from './accessors/string-accessor';
+import { DateAccessor } from './accessors/date-accessor';
 
 export class Series<T> {
   private readonly _name: string;
@@ -38,6 +39,10 @@ export class Series<T> {
 
   get str(): StringAccessor {
     return new StringAccessor(this as unknown as Series<string>);
+  }
+
+  get dt(): DateAccessor {
+    return new DateAccessor(this as unknown as Series<Date>);
   }
 
   get(index: number): T | null {
