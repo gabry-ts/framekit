@@ -32,6 +32,7 @@ export type { TimeUnit } from './accessors/date-accessor';
 export { DataFrame } from './dataframe';
 export { GroupBy } from './ops/groupby';
 export type { JoinType, JoinOnMapping, JoinOptions } from './ops/join';
+export type { PivotOptions, PivotAggFunc } from './ops/pivot';
 export {
   Expr,
   NamedExpr,

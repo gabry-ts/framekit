@@ -14,6 +14,8 @@ import { writeJSON, writeNDJSON } from './io/json/writer';
 import { GroupBy } from './ops/groupby';
 import { hashJoin } from './ops/join';
 import type { JoinType, JoinOnMapping, JoinOptions } from './ops/join';
+import { pivot } from './ops/pivot';
+import type { PivotOptions } from './ops/pivot';
 
 export class DataFrame<S extends Record<string, unknown> = Record<string, unknown>> {
   private readonly _columns: Map<string, Column<unknown>>;
@@ -395,6 +397,10 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
     options?: JoinOptions,
   ): DataFrame<Record<string, unknown>> {
     return hashJoin(this, other, on, how, options);
+  }
+
+  pivot(options: PivotOptions): DataFrame<Record<string, unknown>> {
+    return pivot(this as DataFrame<Record<string, unknown>>, options);
   }
 
   private _rowKey(index: number, cols: string[]): string {
