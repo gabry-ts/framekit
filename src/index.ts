@@ -50,6 +50,7 @@ export {
   ListAggExpr,
   ModeAggExpr,
 } from './expr/expr';
+export { when, WhenBuilder, ThenBuilder } from './expr/conditional-expr';
 
 import { DataFrame } from './dataframe';
 
