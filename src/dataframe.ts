@@ -18,6 +18,7 @@ import { pivot } from './ops/pivot';
 import type { PivotOptions } from './ops/pivot';
 import { melt } from './ops/melt';
 import type { MeltOptions } from './ops/melt';
+import { transpose, concat } from './ops/reshape';
 
 export class DataFrame<S extends Record<string, unknown> = Record<string, unknown>> {
   private readonly _columns: Map<string, Column<unknown>>;
@@ -407,6 +408,16 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
 
   melt(options: MeltOptions): DataFrame<Record<string, unknown>> {
     return melt(this as DataFrame<Record<string, unknown>>, options);
+  }
+
+  transpose(headerColumn?: string): DataFrame<Record<string, unknown>> {
+    return transpose(this as DataFrame<Record<string, unknown>>, headerColumn);
+  }
+
+  static concat(
+    ...frames: DataFrame<Record<string, unknown>>[]
+  ): DataFrame<Record<string, unknown>> {
+    return concat(...frames);
   }
 
   private _rowKey(index: number, cols: string[]): string {
