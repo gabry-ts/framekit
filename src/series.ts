@@ -5,8 +5,19 @@ import { Float64Column, Int32Column } from './storage/numeric';
 import { Utf8Column } from './storage/string';
 import { BooleanColumn } from './storage/boolean';
 import { DateColumn } from './storage/date';
+import { ObjectColumn } from './storage/object';
 import { StringAccessor } from './accessors/string-accessor';
 import { DateAccessor } from './accessors/date-accessor';
+import type { DataFrame } from './dataframe';
+
+// Factory registration to avoid circular dependency
+type DataFrameFactory = (columns: Map<string, Column<unknown>>, columnOrder: string[]) => DataFrame;
+let _createDataFrame: DataFrameFactory | undefined;
+
+/** @internal */
+export function _registerDataFrameFactory(factory: DataFrameFactory): void {
+  _createDataFrame = factory;
+}
 
 export class Series<T> {
   private readonly _name: string;
@@ -198,6 +209,47 @@ export class Series<T> {
     return seen.size;
   }
 
+  valueCounts(): DataFrame<{ value: T; count: number }> {
+    if (!_createDataFrame) {
+      throw new FrameKitError(ErrorCode.INVALID_OPERATION, 'DataFrame factory not registered');
+    }
+
+    const counts = new Map<string, { value: T | null; count: number }>();
+    const order: string[] = [];
+
+    for (let i = 0; i < this._column.length; i++) {
+      const val = this._column.get(i);
+      const key = val === null ? '__null__' : String(this._toComparable(val));
+      const entry = counts.get(key);
+      if (entry) {
+        entry.count++;
+      } else {
+        counts.set(key, { value: val, count: 1 });
+        order.push(key);
+      }
+    }
+
+    // Sort by count descending
+    order.sort((a, b) => counts.get(b)!.count - counts.get(a)!.count);
+
+    const values: (T | null)[] = [];
+    const countValues: number[] = [];
+    for (const key of order) {
+      const entry = counts.get(key)!;
+      values.push(entry.value);
+      countValues.push(entry.count);
+    }
+
+    const valueCol = this._buildColumn(values);
+    const countCol = Float64Column.from(countValues);
+
+    const columns = new Map<string, Column<unknown>>();
+    columns.set('value', valueCol);
+    columns.set('count', countCol);
+
+    return _createDataFrame(columns, ['value', 'count']) as DataFrame<{ value: T; count: number }>;
+  }
+
   cast<U>(dtype: DType): Series<U> {
     const values = this.toArray();
     const converted = values.map((v) => {
@@ -269,6 +321,8 @@ export class Series<T> {
         return BooleanColumn.from(values as (boolean | null)[]);
       case DType.Date:
         return DateColumn.from(values as (Date | null)[]);
+      case DType.Object:
+        return ObjectColumn.from(values);
       default:
         throw new FrameKitError(
           ErrorCode.INVALID_OPERATION,
@@ -319,6 +373,8 @@ function buildColumnFromDType(
       return BooleanColumn.from(values as (boolean | null)[]);
     case DType.Date:
       return DateColumn.from(values as (Date | null)[]);
+    case DType.Object:
+      return ObjectColumn.from(values);
     default:
       throw new FrameKitError(
         ErrorCode.INVALID_OPERATION,

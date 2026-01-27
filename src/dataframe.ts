@@ -6,7 +6,8 @@ import { Float64Column, Int32Column } from './storage/numeric';
 import { Utf8Column } from './storage/string';
 import { BooleanColumn } from './storage/boolean';
 import { DateColumn } from './storage/date';
-import { Series } from './series';
+import { ObjectColumn } from './storage/object';
+import { Series, _registerDataFrameFactory } from './series';
 import { Expr, col } from './expr/expr';
 import { parseCSV } from './io/csv/parser';
 import { writeCSV } from './io/csv/writer';
@@ -409,6 +410,52 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
 
   melt(options: MeltOptions): DataFrame<Record<string, unknown>> {
     return melt(this as DataFrame<Record<string, unknown>>, options);
+  }
+
+  explode(column: string): DataFrame<Record<string, unknown>> {
+    if (!this._columns.has(column)) {
+      throw new ColumnNotFoundError(column, this._columnOrder);
+    }
+
+    const explodeCol = this._columns.get(column)!;
+    const otherColNames = this._columnOrder.filter((n) => n !== column);
+
+    // Build result arrays
+    const resultArrays: Record<string, unknown[]> = {};
+    for (const name of this._columnOrder) {
+      resultArrays[name] = [];
+    }
+
+    for (let i = 0; i < this.length; i++) {
+      const val = explodeCol.get(i);
+
+      if (val === null) {
+        // null arrays produce a row with null value
+        resultArrays[column]!.push(null);
+        for (const name of otherColNames) {
+          resultArrays[name]!.push(this._columns.get(name)!.get(i));
+        }
+      } else if (Array.isArray(val)) {
+        if (val.length === 0) {
+          // empty arrays remove the row
+          continue;
+        }
+        for (const item of val) {
+          resultArrays[column]!.push(item === undefined ? null : item);
+          for (const name of otherColNames) {
+            resultArrays[name]!.push(this._columns.get(name)!.get(i));
+          }
+        }
+      } else {
+        // Non-array values are kept as-is (single row)
+        resultArrays[column]!.push(val);
+        for (const name of otherColNames) {
+          resultArrays[name]!.push(this._columns.get(name)!.get(i));
+        }
+      }
+    }
+
+    return DataFrame.fromColumns<Record<string, unknown>>(resultArrays);
   }
 
   transpose(headerColumn?: string): DataFrame<Record<string, unknown>> {
@@ -1064,6 +1111,7 @@ function detectDType(values: unknown[]): DType {
     if (typeof v === 'string') return DType.Utf8;
     if (typeof v === 'boolean') return DType.Boolean;
     if (v instanceof Date) return DType.Date;
+    if (Array.isArray(v) || typeof v === 'object') return DType.Object;
   }
   // Default to Float64 if all nulls
   return DType.Float64;
@@ -1081,6 +1129,8 @@ function buildColumn(dtype: DType, values: unknown[]): Column<unknown> {
       return BooleanColumn.from(values as (boolean | null)[]);
     case DType.Date:
       return DateColumn.from(values as (Date | null)[]);
+    case DType.Object:
+      return ObjectColumn.from(values);
     default:
       throw new FrameKitError(
         ErrorCode.INVALID_OPERATION,
@@ -1095,3 +1145,8 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
+
+// Register DataFrame factory for Series.valueCounts() to avoid circular dependency
+_registerDataFrameFactory(
+  (columns, columnOrder) => new DataFrame(columns, columnOrder),
+);

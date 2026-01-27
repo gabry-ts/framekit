@@ -25,6 +25,7 @@ export { Float64Column, Int32Column } from './storage/numeric';
 export { Utf8Column } from './storage/string';
 export { BooleanColumn } from './storage/boolean';
 export { DateColumn } from './storage/date';
+export { ObjectColumn } from './storage/object';
 export { Series } from './series';
 export { StringAccessor } from './accessors/string-accessor';
 export { DateAccessor } from './accessors/date-accessor';
