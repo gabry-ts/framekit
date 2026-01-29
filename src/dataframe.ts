@@ -22,6 +22,8 @@ import { melt } from './ops/melt';
 import type { MeltOptions } from './ops/melt';
 import { transpose, concat } from './ops/reshape';
 import { union, intersection, difference } from './ops/setops';
+import type { LazyFrame } from './lazy';
+import { createLazyFrame } from './lazy';
 
 export class DataFrame<S extends Record<string, unknown> = Record<string, unknown>> {
   private readonly _columns: Map<string, Column<unknown>>;
@@ -99,6 +101,10 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
       clonedColumns.set(name, col.clone());
     }
     return new DataFrame<S>(clonedColumns, [...this._columnOrder]);
+  }
+
+  lazy(): LazyFrame<S> {
+    return createLazyFrame(this);
   }
 
   select<K extends string & keyof S>(...columns: K[]): DataFrame<Pick<S, K>> {

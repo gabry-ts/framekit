@@ -54,6 +54,19 @@ export {
   ModeAggExpr,
 } from './expr/expr';
 export { when, WhenBuilder, ThenBuilder } from './expr/conditional-expr';
+export { LazyFrame } from './lazy';
+export type {
+  PlanNode,
+  ScanNode,
+  FilterNode,
+  SelectNode,
+  ProjectNode,
+  GroupByNode,
+  JoinNode,
+  SortNode,
+  LimitNode,
+  DistinctNode,
+} from './engine/lazy/plan';
 export { StringExprAccessor } from './expr/string-expr';
 export { DateExprAccessor } from './expr/date-expr';
 import './expr/expr-accessors';
