@@ -7,6 +7,7 @@ import { Utf8Column } from './storage/string';
 import { BooleanColumn } from './storage/boolean';
 import { DateColumn } from './storage/date';
 import { ObjectColumn } from './storage/object';
+import { BitArray } from './storage/bitarray';
 import { Series, _registerDataFrameFactory } from './series';
 import { Expr, col } from './expr/expr';
 import { parseCSV } from './io/csv/parser';
@@ -858,6 +859,51 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
 
   static empty<S extends Record<string, unknown> = Record<string, unknown>>(): DataFrame<S> {
     return new DataFrame<S>(new Map(), []);
+  }
+
+  static range<S extends Record<string, unknown> = Record<string, unknown>>(
+    name: string,
+    start: number,
+    end: number,
+    step = 1,
+  ): DataFrame<S> {
+    if (step === 0) {
+      throw new FrameKitError(ErrorCode.INVALID_OPERATION, 'step must not be zero');
+    }
+    if (start >= end) {
+      throw new FrameKitError(ErrorCode.INVALID_OPERATION, `start (${start}) must be less than end (${end})`);
+    }
+    const length = Math.ceil((end - start) / step);
+    const data = new Float64Array(length);
+    for (let i = 0; i < length; i++) {
+      data[i] = start + i * step;
+    }
+    const mask = new BitArray(length, true);
+    const col = new Float64Column(data, mask);
+    const columns = new Map<string, Column<unknown>>();
+    columns.set(name, col as unknown as Column<unknown>);
+    return new DataFrame<S>(columns, [name]);
+  }
+
+  static linspace<S extends Record<string, unknown> = Record<string, unknown>>(
+    name: string,
+    start: number,
+    end: number,
+    count: number,
+  ): DataFrame<S> {
+    if (count < 2) {
+      throw new FrameKitError(ErrorCode.INVALID_OPERATION, 'count must be at least 2');
+    }
+    const data = new Float64Array(count);
+    const step = (end - start) / (count - 1);
+    for (let i = 0; i < count; i++) {
+      data[i] = start + i * step;
+    }
+    const mask = new BitArray(count, true);
+    const col = new Float64Column(data, mask);
+    const columns = new Map<string, Column<unknown>>();
+    columns.set(name, col as unknown as Column<unknown>);
+    return new DataFrame<S>(columns, [name]);
   }
 
   static async fromCSV<S extends Record<string, unknown> = Record<string, unknown>>(
