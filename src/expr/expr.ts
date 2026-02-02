@@ -10,6 +10,7 @@ import { DateColumn } from '../storage/date';
 export abstract class Expr<T> {
   abstract evaluate(df: DataFrame): Series<T>;
   abstract get dependencies(): string[];
+  abstract toString(): string;
 
   as(name: string): NamedExpr<T> {
     return new NamedExpr<T>(this, name);
@@ -145,6 +146,10 @@ export class NamedExpr<T> {
   get dependencies(): string[] {
     return this.expr.dependencies;
   }
+
+  toString(): string {
+    return `${this.expr.toString()} AS ${this.name}`;
+  }
 }
 
 // ── Helpers ──
@@ -201,6 +206,12 @@ export class LiteralExpr<T> extends Expr<T> {
     return [];
   }
 
+  toString(): string {
+    if (typeof this._value === 'string') return `"${this._value}"`;
+    if (this._value instanceof Date) return this._value.toISOString();
+    return String(this._value);
+  }
+
   evaluate(df: DataFrame): Series<T> {
     const len = df.length;
     const values = new Array<T>(len).fill(this._value) as (T | null)[];
@@ -224,6 +235,10 @@ export class ColumnExpr<T> extends Expr<T> {
     return [this._name];
   }
 
+  toString(): string {
+    return this._name;
+  }
+
   evaluate(df: DataFrame): Series<T> {
     return df.col(this._name) as unknown as Series<T>;
   }
@@ -232,6 +247,10 @@ export class ColumnExpr<T> extends Expr<T> {
 // ── Arithmetic Expression ──
 
 type ArithOp = 'add' | 'sub' | 'mul' | 'div' | 'mod' | 'pow';
+
+const ARITH_OP_SYMBOLS: Record<ArithOp, string> = {
+  add: '+', sub: '-', mul: '*', div: '/', mod: '%', pow: '**',
+};
 
 class ArithmeticExpr extends Expr<number> {
   private readonly _left: Expr<number>;
@@ -247,6 +266,10 @@ class ArithmeticExpr extends Expr<number> {
 
   get dependencies(): string[] {
     return [...new Set([...this._left.dependencies, ...this._right.dependencies])];
+  }
+
+  toString(): string {
+    return `(${this._left.toString()} ${ARITH_OP_SYMBOLS[this._op]} ${this._right.toString()})`;
   }
 
   evaluate(df: DataFrame): Series<number> {
@@ -284,6 +307,10 @@ function applyArithOp(a: number, b: number, op: ArithOp): number {
 
 type CmpOp = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte';
 
+const CMP_OP_SYMBOLS: Record<CmpOp, string> = {
+  eq: '==', neq: '!=', gt: '>', gte: '>=', lt: '<', lte: '<=',
+};
+
 class ComparisonExpr<T> extends Expr<boolean> {
   private readonly _left: Expr<T>;
   private readonly _right: Expr<T>;
@@ -298,6 +325,10 @@ class ComparisonExpr<T> extends Expr<boolean> {
 
   get dependencies(): string[] {
     return [...new Set([...this._left.dependencies, ...this._right.dependencies])];
+  }
+
+  toString(): string {
+    return `(${this._left.toString()} ${CMP_OP_SYMBOLS[this._op]} ${this._right.toString()})`;
   }
 
   evaluate(df: DataFrame): Series<boolean> {
@@ -351,6 +382,10 @@ class LogicalExpr extends Expr<boolean> {
     return [...new Set([...this._left.dependencies, ...this._right.dependencies])];
   }
 
+  toString(): string {
+    return `(${this._left.toString()} ${this._op.toUpperCase()} ${this._right.toString()})`;
+  }
+
   evaluate(df: DataFrame): Series<boolean> {
     const leftSeries = this._left.evaluate(df);
     const rightSeries = this._right.evaluate(df);
@@ -383,6 +418,10 @@ class NotExpr extends Expr<boolean> {
 
   get dependencies(): string[] {
     return this._inner.dependencies;
+  }
+
+  toString(): string {
+    return `NOT ${this._inner.toString()}`;
   }
 
   evaluate(df: DataFrame): Series<boolean> {
@@ -421,6 +460,7 @@ function toComparableKey(v: unknown): string {
 
 export abstract class AggExpr<T> extends Expr<T> {
   protected readonly _columnName: string;
+  protected abstract readonly _aggName: string;
 
   constructor(columnName: string) {
     super();
@@ -429,6 +469,10 @@ export abstract class AggExpr<T> extends Expr<T> {
 
   get dependencies(): string[] {
     return [this._columnName];
+  }
+
+  toString(): string {
+    return `${this._aggName}(${this._columnName})`;
   }
 
   evaluate(df: DataFrame): Series<T> {
@@ -443,6 +487,7 @@ export abstract class AggExpr<T> extends Expr<T> {
 }
 
 export class SumAggExpr extends AggExpr<number> {
+  protected readonly _aggName = 'sum';
   evaluateColumn(column: Column<unknown>): number {
     let total = 0;
     for (let i = 0; i < column.length; i++) {
@@ -456,6 +501,7 @@ export class SumAggExpr extends AggExpr<number> {
 }
 
 export class MeanAggExpr extends AggExpr<number> {
+  protected readonly _aggName = 'mean';
   evaluateColumn(column: Column<unknown>): number | null {
     let total = 0;
     let count = 0;
@@ -471,6 +517,7 @@ export class MeanAggExpr extends AggExpr<number> {
 }
 
 export class CountAggExpr extends AggExpr<number> {
+  protected readonly _aggName = 'count';
   evaluateColumn(column: Column<unknown>): number {
     let count = 0;
     for (let i = 0; i < column.length; i++) {
@@ -483,6 +530,7 @@ export class CountAggExpr extends AggExpr<number> {
 }
 
 export class CountDistinctAggExpr extends AggExpr<number> {
+  protected readonly _aggName = 'count_distinct';
   evaluateColumn(column: Column<unknown>): number {
     const seen = new Set<string>();
     for (let i = 0; i < column.length; i++) {
@@ -496,6 +544,7 @@ export class CountDistinctAggExpr extends AggExpr<number> {
 }
 
 export class MinAggExpr extends AggExpr<number> {
+  protected readonly _aggName = 'min';
   evaluateColumn(column: Column<unknown>): number | null {
     let result: number | null = null;
     for (let i = 0; i < column.length; i++) {
@@ -511,6 +560,7 @@ export class MinAggExpr extends AggExpr<number> {
 }
 
 export class MaxAggExpr extends AggExpr<number> {
+  protected readonly _aggName = 'max';
   evaluateColumn(column: Column<unknown>): number | null {
     let result: number | null = null;
     for (let i = 0; i < column.length; i++) {
@@ -526,6 +576,7 @@ export class MaxAggExpr extends AggExpr<number> {
 }
 
 export class StdAggExpr extends AggExpr<number> {
+  protected readonly _aggName = 'std';
   evaluateColumn(column: Column<unknown>): number | null {
     const values: number[] = [];
     for (let i = 0; i < column.length; i++) {
@@ -542,6 +593,7 @@ export class StdAggExpr extends AggExpr<number> {
 }
 
 export class FirstAggExpr<T> extends AggExpr<T> {
+  protected readonly _aggName = 'first';
   evaluateColumn(column: Column<unknown>): T | null {
     for (let i = 0; i < column.length; i++) {
       const v = column.get(i);
@@ -554,6 +606,7 @@ export class FirstAggExpr<T> extends AggExpr<T> {
 }
 
 export class LastAggExpr<T> extends AggExpr<T> {
+  protected readonly _aggName = 'last';
   evaluateColumn(column: Column<unknown>): T | null {
     for (let i = column.length - 1; i >= 0; i--) {
       const v = column.get(i);
@@ -566,6 +619,7 @@ export class LastAggExpr<T> extends AggExpr<T> {
 }
 
 export class ListAggExpr<T> extends AggExpr<T[]> {
+  protected readonly _aggName = 'list';
   evaluateColumn(column: Column<unknown>): T[] {
     const result: T[] = [];
     for (let i = 0; i < column.length; i++) {
@@ -579,6 +633,7 @@ export class ListAggExpr<T> extends AggExpr<T[]> {
 }
 
 export class ModeAggExpr<T> extends AggExpr<T> {
+  protected readonly _aggName = 'mode';
   evaluateColumn(column: Column<unknown>): T | null {
     const counts = new Map<string, { value: T; count: number }>();
     for (let i = 0; i < column.length; i++) {

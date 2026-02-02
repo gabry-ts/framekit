@@ -24,6 +24,10 @@ class StringUnaryExpr extends Expr<string> {
     return this._inner.dependencies;
   }
 
+  toString(): string {
+    return `${this._inner.toString()}.str.${this._op}()`;
+  }
+
   evaluate(df: DataFrame): Series<string> {
     const series = this._inner.evaluate(df);
     const results: (string | null)[] = [];
@@ -57,6 +61,10 @@ class StringContainsExpr extends Expr<boolean> {
     return this._inner.dependencies;
   }
 
+  toString(): string {
+    return `${this._inner.toString()}.str.contains("${this._pattern}")`;
+  }
+
   evaluate(df: DataFrame): Series<boolean> {
     const series = this._inner.evaluate(df);
     const results: (boolean | null)[] = [];
@@ -82,6 +90,10 @@ class StringStartsWithExpr extends Expr<boolean> {
     return this._inner.dependencies;
   }
 
+  toString(): string {
+    return `${this._inner.toString()}.str.startsWith("${this._prefix}")`;
+  }
+
   evaluate(df: DataFrame): Series<boolean> {
     const series = this._inner.evaluate(df);
     const results: (boolean | null)[] = [];
@@ -105,6 +117,10 @@ class StringEndsWithExpr extends Expr<boolean> {
 
   get dependencies(): string[] {
     return this._inner.dependencies;
+  }
+
+  toString(): string {
+    return `${this._inner.toString()}.str.endsWith("${this._suffix}")`;
   }
 
   evaluate(df: DataFrame): Series<boolean> {
@@ -134,6 +150,10 @@ class StringReplaceExpr extends Expr<string> {
     return this._inner.dependencies;
   }
 
+  toString(): string {
+    return `${this._inner.toString()}.str.replace("${this._pattern}", "${this._replacement}")`;
+  }
+
   evaluate(df: DataFrame): Series<string> {
     const series = this._inner.evaluate(df);
     const results: (string | null)[] = [];
@@ -161,6 +181,10 @@ class StringSliceExpr extends Expr<string> {
     return this._inner.dependencies;
   }
 
+  toString(): string {
+    return `${this._inner.toString()}.str.slice(${this._start}${this._end !== undefined ? `, ${this._end}` : ''})`;
+  }
+
   evaluate(df: DataFrame): Series<string> {
     const series = this._inner.evaluate(df);
     const results: (string | null)[] = [];
@@ -182,6 +206,10 @@ class StringLengthExpr extends Expr<number> {
 
   get dependencies(): string[] {
     return this._inner.dependencies;
+  }
+
+  toString(): string {
+    return `${this._inner.toString()}.str.length()`;
   }
 
   evaluate(df: DataFrame): Series<number> {
@@ -211,6 +239,11 @@ class StringConcatExpr extends Expr<string> {
       }
     }
     return [...deps];
+  }
+
+  toString(): string {
+    const parts = this._parts.map(p => p instanceof Expr ? p.toString() : `"${p}"`);
+    return `concat(${parts.join(', ')})`;
   }
 
   evaluate(df: DataFrame): Series<string> {

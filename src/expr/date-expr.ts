@@ -60,6 +60,10 @@ class DateComponentExpr extends Expr<number> {
     return this._inner.dependencies;
   }
 
+  toString(): string {
+    return `${this._inner.toString()}.dt.${this._op}()`;
+  }
+
   evaluate(df: DataFrame): Series<number> {
     const series = this._inner.evaluate(df);
     const results: (number | null)[] = [];
@@ -83,6 +87,10 @@ class DateTruncateExpr extends Expr<Date> {
 
   get dependencies(): string[] {
     return this._inner.dependencies;
+  }
+
+  toString(): string {
+    return `${this._inner.toString()}.dt.truncate("${this._unit}")`;
   }
 
   evaluate(df: DataFrame): Series<Date> {
@@ -116,6 +124,10 @@ class DateDiffExpr extends Expr<number> {
 
   get dependencies(): string[] {
     return [...new Set([...this._left.dependencies, ...this._right.dependencies])];
+  }
+
+  toString(): string {
+    return `dateDiff(${this._left.toString()}, ${this._right.toString()}, "${this._unit}")`;
   }
 
   evaluate(df: DataFrame): Series<number> {

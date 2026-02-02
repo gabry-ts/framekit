@@ -74,14 +74,14 @@ describe('LazyFrame', () => {
     const lf = df.lazy().groupBy('b').agg(col<number>('a'));
     expect(lf._plan.type).toBe('groupby');
     const plan = lf.explain();
-    expect(plan).toContain('GROUPBY [b]');
+    expect(plan).toContain('GROUPBY [keys: b; aggs: a]');
     expect(plan).toContain('SCAN');
   });
 
   it('groupBy with multiple keys', () => {
     const lf = df.lazy().groupBy('a', 'b').agg(col<number>('a'));
     expect(lf._plan.type).toBe('groupby');
-    expect(lf.explain()).toContain('GROUPBY [a, b]');
+    expect(lf.explain()).toContain('GROUPBY [keys: a, b; aggs: a]');
   });
 
   it('sortBy(column, order) appends sort node', () => {
@@ -166,7 +166,7 @@ describe('explainPlan', () => {
       exprs: [col<number>('a'), col<string>('b')],
     };
     const result = explainPlan(node);
-    expect(result).toContain('PROJECT [2 expr(s)]');
+    expect(result).toContain('PROJECT [a, b]');
   });
 
   it('explains groupby node', () => {
@@ -177,6 +177,79 @@ describe('explainPlan', () => {
       aggs: [col<number>('b')],
     };
     const result = explainPlan(node);
-    expect(result).toContain('GROUPBY [a]');
+    expect(result).toContain('GROUPBY [keys: a; aggs: b]');
+  });
+});
+
+describe('explain() plan visualization', () => {
+  const df = DataFrame.fromRows<{ amount: number; category: string; status: string }>([
+    { amount: 100, category: 'A', status: 'active' },
+    { amount: 200, category: 'B', status: 'inactive' },
+    { amount: 300, category: 'A', status: 'active' },
+  ]);
+
+  it('filter node shows predicate expression', () => {
+    const plan = df.lazy().filter(col<number>('amount').gt(100)).explain();
+    expect(plan).toContain('FILTER [(amount > 100)]');
+  });
+
+  it('filter with complex predicate shows full expression', () => {
+    const pred = col<number>('amount').gt(100).and(col<string>('status').eq('active'));
+    const plan = df.lazy().filter(pred).explain();
+    expect(plan).toContain('FILTER [((amount > 100) AND (status == "active"))]');
+  });
+
+  it('groupBy shows keys and aggregation specs', () => {
+    const plan = df.lazy().groupBy('category').agg(col<number>('amount').sum()).explain();
+    expect(plan).toContain('GROUPBY [keys: category; aggs: sum(amount)]');
+  });
+
+  it('select node shows column list', () => {
+    const plan = df.lazy().select('amount', 'category').explain();
+    expect(plan).toContain('SELECT [amount, category]');
+  });
+
+  it('sort node shows column and direction', () => {
+    const plan = df.lazy().sort('amount', true).explain();
+    expect(plan).toContain('SORT [amount DESC]');
+  });
+
+  it('scan node shows id', () => {
+    const plan = df.lazy().explain();
+    expect(plan).toMatch(/SCAN \[id=\d+\]/);
+  });
+
+  it('shows both original and optimized plans', () => {
+    const plan = df.lazy().filter(col<number>('amount').gt(100)).select('amount').explain();
+    expect(plan).toContain('ORIGINAL:');
+    expect(plan).toContain('OPTIMIZED:');
+  });
+
+  it('plan uses indentation showing nesting', () => {
+    const plan = df.lazy().filter(col<number>('amount').gt(100)).select('amount').explain();
+    const lines = plan.split('\n');
+    const selectLine = lines.find(l => l.includes('SELECT'));
+    const filterLine = lines.find(l => l.includes('FILTER'));
+    expect(selectLine).toBeDefined();
+    expect(filterLine).toBeDefined();
+    // child nodes should have more indentation than parent
+    const selectIndent = selectLine!.search(/\S/);
+    const filterIndent = filterLine!.search(/\S/);
+    expect(filterIndent).toBeGreaterThanOrEqual(selectIndent);
+  });
+
+  it('distinct node with subset', () => {
+    const plan = df.lazy().distinct(['amount']).explain();
+    expect(plan).toContain('DISTINCT [amount]');
+  });
+
+  it('limit node shows count', () => {
+    const plan = df.lazy().limit(5).explain();
+    expect(plan).toContain('LIMIT [5]');
+  });
+
+  it('project node shows expression details', () => {
+    const plan = df.lazy().project(col<number>('amount').mul(2)).explain();
+    expect(plan).toContain('PROJECT [(amount * 2)]');
   });
 });

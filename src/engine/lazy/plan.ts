@@ -87,13 +87,17 @@ export function explainPlan(node: PlanNode, indent = 0): string {
       }
       return `${pad}SCAN [id=${node.id}]`;
     case 'filter':
-      return `${pad}FILTER\n${explainPlan(node.input, indent + 1)}`;
+      return `${pad}FILTER [${node.predicate.toString()}]\n${explainPlan(node.input, indent + 1)}`;
     case 'select':
       return `${pad}SELECT [${node.columns.join(', ')}]\n${explainPlan(node.input, indent + 1)}`;
-    case 'project':
-      return `${pad}PROJECT [${node.exprs.length} expr(s)]\n${explainPlan(node.input, indent + 1)}`;
-    case 'groupby':
-      return `${pad}GROUPBY [${node.keys.join(', ')}]\n${explainPlan(node.input, indent + 1)}`;
+    case 'project': {
+      const exprStrs = node.exprs.map(e => e.toString()).join(', ');
+      return `${pad}PROJECT [${exprStrs}]\n${explainPlan(node.input, indent + 1)}`;
+    }
+    case 'groupby': {
+      const aggStrs = node.aggs.map(a => a.toString()).join(', ');
+      return `${pad}GROUPBY [keys: ${node.keys.join(', ')}; aggs: ${aggStrs}]\n${explainPlan(node.input, indent + 1)}`;
+    }
     case 'join':
       return `${pad}JOIN [${node.how}]\n${pad}  left:\n${explainPlan(node.left, indent + 2)}\n${pad}  right:\n${explainPlan(node.right, indent + 2)}`;
     case 'sort':

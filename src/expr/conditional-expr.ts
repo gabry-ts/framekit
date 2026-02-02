@@ -58,6 +58,14 @@ class WhenExpr<T> extends Expr<T> {
     return [...deps];
   }
 
+  toString(): string {
+    const parts = this._clauses.map(c => `WHEN ${c.condition.toString()} THEN ${c.value.toString()}`);
+    if (this._otherwise) {
+      parts.push(`ELSE ${this._otherwise.toString()}`);
+    }
+    return `CASE ${parts.join(' ')} END`;
+  }
+
   evaluate(df: DataFrame): Series<T> {
     const len = df.length;
     const conditionResults = this._clauses.map((c) => c.condition.evaluate(df));
