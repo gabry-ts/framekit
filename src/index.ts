@@ -70,6 +70,7 @@ export type {
 export { execute } from './engine/lazy/executor';
 export { optimize } from './engine/lazy/optimizer';
 export type { StreamCSVOptions } from './engine/streaming/scanner';
+export type { StreamNDJSONOptions } from './engine/streaming/ndjson-scanner';
 export { StringExprAccessor } from './expr/string-expr';
 export { DateExprAccessor } from './expr/date-expr';
 import './expr/expr-accessors';

@@ -14,6 +14,8 @@ import { parseCSV } from './io/csv/parser';
 import { writeCSV } from './io/csv/writer';
 import { streamCSVFile } from './engine/streaming/scanner';
 import type { StreamCSVOptions } from './engine/streaming/scanner';
+import { streamNDJSONFile } from './engine/streaming/ndjson-scanner';
+import type { StreamNDJSONOptions } from './engine/streaming/ndjson-scanner';
 import { writeJSON, writeNDJSON } from './io/json/writer';
 import { GroupBy } from './ops/groupby';
 import { hashJoin } from './ops/join';
@@ -960,6 +962,36 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
     lazy.collect = async (): Promise<DataFrame<S>> => {
       const chunks: DataFrame<S>[] = [];
       for await (const chunk of DataFrame.streamCSV<S>(path, options)) {
+        chunks.push(chunk);
+      }
+      if (chunks.length === 0) return DataFrame.empty<S>();
+      if (chunks.length === 1) return chunks[0]!;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return concat(...(chunks as DataFrame<any>[])) as DataFrame<S>;
+    };
+    return lazy;
+  }
+
+  static async *streamNDJSON<S extends Record<string, unknown> = Record<string, unknown>>(
+    path: string,
+    options: StreamNDJSONOptions = {},
+  ): AsyncIterable<DataFrame<S>> {
+    for await (const chunk of streamNDJSONFile(path, options)) {
+      yield DataFrame.fromRows<S>(chunk);
+    }
+  }
+
+  static scanNDJSON<S extends Record<string, unknown> = Record<string, unknown>>(
+    path: string,
+    options: StreamNDJSONOptions = {},
+  ): LazyFrame<S> {
+    const placeholder = DataFrame.empty<S>();
+    const lazy = createLazyFrame(placeholder);
+    const originalCollect = lazy.collect.bind(lazy);
+    void originalCollect; // suppress unused
+    lazy.collect = async (): Promise<DataFrame<S>> => {
+      const chunks: DataFrame<S>[] = [];
+      for await (const chunk of DataFrame.streamNDJSON<S>(path, options)) {
         chunks.push(chunk);
       }
       if (chunks.length === 0) return DataFrame.empty<S>();

@@ -118,6 +118,18 @@ export class LazyFrame<S extends Record<string, unknown> = Record<string, unknow
   collect(): Promise<DataFrame<S>> {
     return Promise.resolve(execute(this._plan, this._source));
   }
+
+  async sink(filePath: string): Promise<void> {
+    const df = await this.collect();
+    const ext = filePath.toLowerCase();
+    if (ext.endsWith('.csv') || ext.endsWith('.tsv')) {
+      await df.toCSV(filePath);
+    } else if (ext.endsWith('.ndjson') || ext.endsWith('.jsonl')) {
+      await df.toNDJSON(filePath);
+    } else {
+      throw new Error(`Unsupported sink format for '${filePath}'. Supported: .csv, .tsv, .ndjson, .jsonl`);
+    }
+  }
 }
 
 export function createLazyFrame<S extends Record<string, unknown>>(
