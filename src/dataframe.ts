@@ -12,6 +12,8 @@ import { Series, _registerDataFrameFactory } from './series';
 import { Expr, col } from './expr/expr';
 import { parseCSV } from './io/csv/parser';
 import { writeCSV } from './io/csv/writer';
+import { streamCSVFile } from './engine/streaming/scanner';
+import type { StreamCSVOptions } from './engine/streaming/scanner';
 import { writeJSON, writeNDJSON } from './io/json/writer';
 import { GroupBy } from './ops/groupby';
 import { hashJoin } from './ops/join';
@@ -934,6 +936,38 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
 
     const parsed = parseCSV(content, options);
     return buildDataFrameFromParsed<S>(parsed.header, parsed.columns, parsed.inferredTypes);
+  }
+
+  static async *streamCSV<S extends Record<string, unknown> = Record<string, unknown>>(
+    path: string,
+    options: StreamCSVOptions = {},
+  ): AsyncIterable<DataFrame<S>> {
+    for await (const chunk of streamCSVFile(path, options)) {
+      yield buildDataFrameFromParsed<S>(chunk.header, chunk.rawColumns, chunk.inferredTypes);
+    }
+  }
+
+  static scanCSV<S extends Record<string, unknown> = Record<string, unknown>>(
+    path: string,
+    options: StreamCSVOptions = {},
+  ): LazyFrame<S> {
+    // Create a LazyFrame that, on collect(), streams and concatenates all chunks
+    const placeholder = DataFrame.empty<S>();
+    const lazy = createLazyFrame(placeholder);
+    // Override collect to use streaming
+    const originalCollect = lazy.collect.bind(lazy);
+    void originalCollect; // suppress unused
+    lazy.collect = async (): Promise<DataFrame<S>> => {
+      const chunks: DataFrame<S>[] = [];
+      for await (const chunk of DataFrame.streamCSV<S>(path, options)) {
+        chunks.push(chunk);
+      }
+      if (chunks.length === 0) return DataFrame.empty<S>();
+      if (chunks.length === 1) return chunks[0]!;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return concat(...(chunks as DataFrame<any>[])) as DataFrame<S>;
+    };
+    return lazy;
   }
 
   toCSV(options?: CSVWriteOptions): string;
