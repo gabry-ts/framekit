@@ -84,6 +84,9 @@ export {
   CumMinExpr,
   CumProdExpr,
   CumCountExpr,
+  ShiftExpr,
+  DiffExpr,
+  PctChangeExpr,
 } from './ops/window';
 import './expr/expr-accessors';
 import './ops/window';

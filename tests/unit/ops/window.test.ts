@@ -263,3 +263,101 @@ describe('Cumulative window functions', () => {
     });
   });
 });
+
+describe('Offset window functions', () => {
+  const df = DataFrame.fromRows([
+    { amount: 10 },
+    { amount: 20 },
+    { amount: 30 },
+    { amount: 40 },
+    { amount: 50 },
+  ]);
+
+  function getValues(result: DataFrame, colName: string): (number | null)[] {
+    const vals: (number | null)[] = [];
+    for (let i = 0; i < result.length; i++) {
+      vals.push(result.col(colName).get(i) as number | null);
+    }
+    return vals;
+  }
+
+  describe('shift()', () => {
+    it('should lag values with positive offset', () => {
+      const result = df.withColumn('s', col('amount').shift(1));
+      expect(getValues(result, 's')).toEqual([null, 10, 20, 30, 40]);
+    });
+
+    it('should lead values with negative offset', () => {
+      const result = df.withColumn('s', col('amount').shift(-1));
+      expect(getValues(result, 's')).toEqual([20, 30, 40, 50, null]);
+    });
+
+    it('should handle shift(2)', () => {
+      const result = df.withColumn('s', col('amount').shift(2));
+      expect(getValues(result, 's')).toEqual([null, null, 10, 20, 30]);
+    });
+
+    it('should handle nulls in source', () => {
+      const dfNull = DataFrame.fromRows([
+        { amount: 10 },
+        { amount: null },
+        { amount: 30 },
+      ]);
+      const result = dfNull.withColumn('s', col('amount').shift(1));
+      expect(getValues(result, 's')).toEqual([null, 10, null]);
+    });
+  });
+
+  describe('diff()', () => {
+    it('should compute difference with previous value', () => {
+      const result = df.withColumn('d', col('amount').diff());
+      expect(getValues(result, 'd')).toEqual([null, 10, 10, 10, 10]);
+    });
+
+    it('should compute difference with 2 rows back', () => {
+      const result = df.withColumn('d', col('amount').diff(2));
+      expect(getValues(result, 'd')).toEqual([null, null, 20, 20, 20]);
+    });
+
+    it('should produce null when either value is null', () => {
+      const dfNull = DataFrame.fromRows([
+        { amount: 10 },
+        { amount: null },
+        { amount: 30 },
+      ]);
+      const result = dfNull.withColumn('d', col('amount').diff());
+      expect(getValues(result, 'd')).toEqual([null, null, null]);
+    });
+  });
+
+  describe('pctChange()', () => {
+    it('should compute percentage change from previous value', () => {
+      const result = df.withColumn('p', col('amount').pctChange());
+      expect(getValues(result, 'p')).toEqual([null, 1, 0.5, 1 / 3, 0.25]);
+    });
+
+    it('should produce null at boundaries', () => {
+      const result = df.withColumn('p', col('amount').pctChange(2));
+      expect(getValues(result, 'p')).toEqual([null, null, 2, 1, 2 / 3]);
+    });
+
+    it('should produce null when previous value is zero', () => {
+      const dfZero = DataFrame.fromRows([
+        { amount: 0 },
+        { amount: 10 },
+      ]);
+      const result = dfZero.withColumn('p', col('amount').pctChange());
+      expect(getValues(result, 'p')).toEqual([null, null]);
+    });
+
+    it('should produce null when either value is null', () => {
+      const dfNull = DataFrame.fromRows([
+        { amount: 10 },
+        { amount: null },
+        { amount: 30 },
+      ]);
+      const result = dfNull.withColumn('p', col('amount').pctChange());
+      expect(getValues(result, 'p')).toEqual([null, null, null]);
+    });
+  });
+});

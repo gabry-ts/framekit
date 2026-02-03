@@ -341,6 +341,111 @@ export class CumCountExpr extends CumulativeExpr {
   }
 }
 
+// ── Offset Window Expression Base ──
+
+abstract class OffsetExpr extends Expr<number> {
+  protected readonly _source: Expr<unknown>;
+  protected readonly _offset: number;
+
+  constructor(source: Expr<unknown>, offset: number) {
+    super();
+    this._source = source;
+    this._offset = offset;
+  }
+
+  get dependencies(): string[] {
+    return this._source.dependencies;
+  }
+}
+
+// ── shift(n): lag (positive) / lead (negative) ──
+
+export class ShiftExpr extends OffsetExpr {
+  toString(): string {
+    return `shift(${this._source.toString()}, ${this._offset})`;
+  }
+
+  evaluate(df: DataFrame): Series<number> {
+    const series = this._source.evaluate(df);
+    const len = series.length;
+    const results = new Array<number | null>(len);
+
+    for (let i = 0; i < len; i++) {
+      const srcIdx = i - this._offset;
+      if (srcIdx < 0 || srcIdx >= len) {
+        results[i] = null;
+      } else {
+        const v = series.get(srcIdx);
+        results[i] = v !== null && typeof v === 'number' ? v : null;
+      }
+    }
+
+    return new Series<number>('shift', Float64Column.from(results));
+  }
+}
+
+// ── diff(n): difference with n rows back ──
+
+export class DiffExpr extends OffsetExpr {
+  toString(): string {
+    return `diff(${this._source.toString()}, ${this._offset})`;
+  }
+
+  evaluate(df: DataFrame): Series<number> {
+    const series = this._source.evaluate(df);
+    const len = series.length;
+    const results = new Array<number | null>(len);
+
+    for (let i = 0; i < len; i++) {
+      const prevIdx = i - this._offset;
+      if (prevIdx < 0 || prevIdx >= len) {
+        results[i] = null;
+      } else {
+        const curr = series.get(i);
+        const prev = series.get(prevIdx);
+        if (curr !== null && typeof curr === 'number' && prev !== null && typeof prev === 'number') {
+          results[i] = curr - prev;
+        } else {
+          results[i] = null;
+        }
+      }
+    }
+
+    return new Series<number>('diff', Float64Column.from(results));
+  }
+}
+
+// ── pctChange(n): percentage change from n rows back ──
+
+export class PctChangeExpr extends OffsetExpr {
+  toString(): string {
+    return `pctChange(${this._source.toString()}, ${this._offset})`;
+  }
+
+  evaluate(df: DataFrame): Series<number> {
+    const series = this._source.evaluate(df);
+    const len = series.length;
+    const results = new Array<number | null>(len);
+
+    for (let i = 0; i < len; i++) {
+      const prevIdx = i - this._offset;
+      if (prevIdx < 0 || prevIdx >= len) {
+        results[i] = null;
+      } else {
+        const curr = series.get(i);
+        const prev = series.get(prevIdx);
+        if (curr !== null && typeof curr === 'number' && prev !== null && typeof prev === 'number' && prev !== 0) {
+          results[i] = (curr - prev) / prev;
+        } else {
+          results[i] = null;
+        }
+      }
+    }
+
+    return new Series<number>('pctChange', Float64Column.from(results));
+  }
+}
+
 // ── Module augmentation: add methods to Expr ──
 
 declare module '../expr/expr' {
@@ -356,6 +461,9 @@ declare module '../expr/expr' {
     cumMin(): Expr<number>;
     cumProd(): Expr<number>;
     cumCount(): Expr<number>;
+    shift(offset: number): Expr<number>;
+    diff(offset?: number): Expr<number>;
+    pctChange(offset?: number): Expr<number>;
   }
 }
 
@@ -397,4 +505,16 @@ Expr.prototype.cumProd = function (this: Expr<unknown>): Expr<number> {
 
 Expr.prototype.cumCount = function (this: Expr<unknown>): Expr<number> {
   return new CumCountExpr(this);
+};
+
+Expr.prototype.shift = function (this: Expr<unknown>, offset: number): Expr<number> {
+  return new ShiftExpr(this, offset);
+};
+
+Expr.prototype.diff = function (this: Expr<unknown>, offset = 1): Expr<number> {
+  return new DiffExpr(this, offset);
+};
+
+Expr.prototype.pctChange = function (this: Expr<unknown>, offset = 1): Expr<number> {
+  return new PctChangeExpr(this, offset);
 };
