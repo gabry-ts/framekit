@@ -73,7 +73,15 @@ export type { StreamCSVOptions } from './engine/streaming/scanner';
 export type { StreamNDJSONOptions } from './engine/streaming/ndjson-scanner';
 export { StringExprAccessor } from './expr/string-expr';
 export { DateExprAccessor } from './expr/date-expr';
+export {
+  WindowRankExpr,
+  WindowDenseRankExpr,
+  WindowRowNumberExpr,
+  WindowPercentRankExpr,
+  WindowNtileExpr,
+} from './ops/window';
 import './expr/expr-accessors';
+import './ops/window';
 
 import { DataFrame } from './dataframe';
 
