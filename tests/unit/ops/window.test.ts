@@ -142,3 +142,124 @@ describe('Window ranking functions', () => {
     });
   });
 });
+
+describe('Cumulative window functions', () => {
+  const df = DataFrame.fromRows([
+    { amount: 10 },
+    { amount: 20 },
+    { amount: 30 },
+    { amount: 40 },
+    { amount: 50 },
+  ]);
+
+  function getValues(result: DataFrame, colName: string): (number | null)[] {
+    const vals: (number | null)[] = [];
+    for (let i = 0; i < result.length; i++) {
+      vals.push(result.col(colName).get(i) as number | null);
+    }
+    return vals;
+  }
+
+  describe('cumSum()', () => {
+    it('should compute running sum', () => {
+      const result = df.withColumn('cs', col('amount').cumSum());
+      expect(getValues(result, 'cs')).toEqual([10, 30, 60, 100, 150]);
+    });
+
+    it('should skip nulls in running sum', () => {
+      const dfNull = DataFrame.fromRows([
+        { amount: 10 },
+        { amount: null },
+        { amount: 30 },
+      ]);
+      const result = dfNull.withColumn('cs', col('amount').cumSum());
+      expect(getValues(result, 'cs')).toEqual([10, 10, 40]);
+    });
+  });
+
+  describe('cumMax()', () => {
+    it('should compute running maximum', () => {
+      const dfMixed = DataFrame.fromRows([
+        { amount: 30 },
+        { amount: 10 },
+        { amount: 50 },
+        { amount: 20 },
+      ]);
+      const result = dfMixed.withColumn('cm', col('amount').cumMax());
+      expect(getValues(result, 'cm')).toEqual([30, 30, 50, 50]);
+    });
+
+    it('should skip nulls in running max', () => {
+      const dfNull = DataFrame.fromRows([
+        { amount: null },
+        { amount: 10 },
+        { amount: 5 },
+      ]);
+      const result = dfNull.withColumn('cm', col('amount').cumMax());
+      expect(getValues(result, 'cm')).toEqual([null, 10, 10]);
+    });
+  });
+
+  describe('cumMin()', () => {
+    it('should compute running minimum', () => {
+      const dfMixed = DataFrame.fromRows([
+        { amount: 30 },
+        { amount: 10 },
+        { amount: 50 },
+        { amount: 20 },
+      ]);
+      const result = dfMixed.withColumn('cm', col('amount').cumMin());
+      expect(getValues(result, 'cm')).toEqual([30, 10, 10, 10]);
+    });
+
+    it('should skip nulls in running min', () => {
+      const dfNull = DataFrame.fromRows([
+        { amount: null },
+        { amount: 10 },
+        { amount: 5 },
+      ]);
+      const result = dfNull.withColumn('cm', col('amount').cumMin());
+      expect(getValues(result, 'cm')).toEqual([null, 10, 5]);
+    });
+  });
+
+  describe('cumProd()', () => {
+    it('should compute running product', () => {
+      const result = DataFrame.fromRows([
+        { amount: 2 },
+        { amount: 3 },
+        { amount: 4 },
+      ]).withColumn('cp', col('amount').cumProd());
+      expect(getValues(result, 'cp')).toEqual([2, 6, 24]);
+    });
+
+    it('should skip nulls in running product', () => {
+      const dfNull = DataFrame.fromRows([
+        { amount: 2 },
+        { amount: null },
+        { amount: 5 },
+      ]);
+      const result = dfNull.withColumn('cp', col('amount').cumProd());
+      expect(getValues(result, 'cp')).toEqual([2, 2, 10]);
+    });
+  });
+
+  describe('cumCount()', () => {
+    it('should compute running count excluding nulls', () => {
+      const result = df.withColumn('cc', col('amount').cumCount());
+      expect(getValues(result, 'cc')).toEqual([1, 2, 3, 4, 5]);
+    });
+
+    it('should skip nulls in running count', () => {
+      const dfNull = DataFrame.fromRows([
+        { amount: 10 },
+        { amount: null },
+        { amount: 30 },
+        { amount: null },
+        { amount: 50 },
+      ]);
+      const result = dfNull.withColumn('cc', col('amount').cumCount());
+      expect(getValues(result, 'cc')).toEqual([1, 1, 2, 2, 3]);
+    });
+  });
+});

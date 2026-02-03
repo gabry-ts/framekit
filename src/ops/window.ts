@@ -201,6 +201,146 @@ function compareValues(a: unknown, b: unknown): number {
   return sa < sb ? -1 : sa > sb ? 1 : 0;
 }
 
+// ── Cumulative Window Expression Base ──
+
+abstract class CumulativeExpr extends Expr<number> {
+  protected readonly _source: Expr<unknown>;
+
+  constructor(source: Expr<unknown>) {
+    super();
+    this._source = source;
+  }
+
+  get dependencies(): string[] {
+    return this._source.dependencies;
+  }
+}
+
+// ── cumSum(): running sum ──
+
+export class CumSumExpr extends CumulativeExpr {
+  toString(): string {
+    return `cumSum(${this._source.toString()})`;
+  }
+
+  evaluate(df: DataFrame): Series<number> {
+    const series = this._source.evaluate(df);
+    const len = series.length;
+    const results = new Array<number | null>(len);
+    let sum = 0;
+
+    for (let i = 0; i < len; i++) {
+      const v = series.get(i);
+      if (v !== null && typeof v === 'number') {
+        sum += v;
+      }
+      results[i] = sum;
+    }
+
+    return new Series<number>('cumSum', Float64Column.from(results));
+  }
+}
+
+// ── cumMax(): running maximum ──
+
+export class CumMaxExpr extends CumulativeExpr {
+  toString(): string {
+    return `cumMax(${this._source.toString()})`;
+  }
+
+  evaluate(df: DataFrame): Series<number> {
+    const series = this._source.evaluate(df);
+    const len = series.length;
+    const results = new Array<number | null>(len);
+    let max: number | null = null;
+
+    for (let i = 0; i < len; i++) {
+      const v = series.get(i);
+      if (v !== null && typeof v === 'number') {
+        max = max === null ? v : Math.max(max, v);
+      }
+      results[i] = max;
+    }
+
+    return new Series<number>('cumMax', Float64Column.from(results));
+  }
+}
+
+// ── cumMin(): running minimum ──
+
+export class CumMinExpr extends CumulativeExpr {
+  toString(): string {
+    return `cumMin(${this._source.toString()})`;
+  }
+
+  evaluate(df: DataFrame): Series<number> {
+    const series = this._source.evaluate(df);
+    const len = series.length;
+    const results = new Array<number | null>(len);
+    let min: number | null = null;
+
+    for (let i = 0; i < len; i++) {
+      const v = series.get(i);
+      if (v !== null && typeof v === 'number') {
+        min = min === null ? v : Math.min(min, v);
+      }
+      results[i] = min;
+    }
+
+    return new Series<number>('cumMin', Float64Column.from(results));
+  }
+}
+
+// ── cumProd(): running product ──
+
+export class CumProdExpr extends CumulativeExpr {
+  toString(): string {
+    return `cumProd(${this._source.toString()})`;
+  }
+
+  evaluate(df: DataFrame): Series<number> {
+    const series = this._source.evaluate(df);
+    const len = series.length;
+    const results = new Array<number | null>(len);
+    let prod = 1;
+
+    for (let i = 0; i < len; i++) {
+      const v = series.get(i);
+      if (v !== null && typeof v === 'number') {
+        prod *= v;
+      }
+      results[i] = prod;
+    }
+
+    return new Series<number>('cumProd', Float64Column.from(results));
+  }
+}
+
+// ── cumCount(): running count (excluding nulls) ──
+
+export class CumCountExpr extends CumulativeExpr {
+  toString(): string {
+    return `cumCount(${this._source.toString()})`;
+  }
+
+  evaluate(df: DataFrame): Series<number> {
+    const series = this._source.evaluate(df);
+    const len = series.length;
+    const results = new Array<number | null>(len);
+    let count = 0;
+
+    for (let i = 0; i < len; i++) {
+      const v = series.get(i);
+      if (v !== null) {
+        count++;
+      }
+      results[i] = count;
+    }
+
+    return new Series<number>('cumCount', Float64Column.from(results));
+  }
+}
+
 // ── Module augmentation: add methods to Expr ──
 
 declare module '../expr/expr' {
@@ -211,6 +351,11 @@ declare module '../expr/expr' {
     rowNumber(): Expr<number>;
     percentRank(): Expr<number>;
     ntile(n: number): Expr<number>;
+    cumSum(): Expr<number>;
+    cumMax(): Expr<number>;
+    cumMin(): Expr<number>;
+    cumProd(): Expr<number>;
+    cumCount(): Expr<number>;
   }
 }
 
@@ -232,4 +377,24 @@ Expr.prototype.percentRank = function (this: Expr<unknown>): Expr<number> {
 
 Expr.prototype.ntile = function (this: Expr<unknown>, n: number): Expr<number> {
   return new WindowNtileExpr(this, n);
+};
+
+Expr.prototype.cumSum = function (this: Expr<unknown>): Expr<number> {
+  return new CumSumExpr(this);
+};
+
+Expr.prototype.cumMax = function (this: Expr<unknown>): Expr<number> {
+  return new CumMaxExpr(this);
+};
+
+Expr.prototype.cumMin = function (this: Expr<unknown>): Expr<number> {
+  return new CumMinExpr(this);
+};
+
+Expr.prototype.cumProd = function (this: Expr<unknown>): Expr<number> {
+  return new CumProdExpr(this);
+};
+
+Expr.prototype.cumCount = function (this: Expr<unknown>): Expr<number> {
+  return new CumCountExpr(this);
 };

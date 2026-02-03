@@ -79,6 +79,11 @@ export {
   WindowRowNumberExpr,
   WindowPercentRankExpr,
   WindowNtileExpr,
+  CumSumExpr,
+  CumMaxExpr,
+  CumMinExpr,
+  CumProdExpr,
+  CumCountExpr,
 } from './ops/window';
 import './expr/expr-accessors';
 import './ops/window';
