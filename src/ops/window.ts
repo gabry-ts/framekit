@@ -8,15 +8,23 @@ import { Float64Column } from '../storage/numeric';
 
 abstract class WindowRankingExpr extends Expr<number> {
   protected readonly _source: Expr<unknown>;
+  protected readonly _descending: boolean;
 
-  constructor(source: Expr<unknown>) {
+  constructor(source: Expr<unknown>, descending = false) {
     super();
     this._source = source;
+    this._descending = descending;
   }
 
   get dependencies(): string[] {
     return this._source.dependencies;
   }
+
+  protected _sortCompare(a: unknown, b: unknown): number {
+    return this._descending ? -compareValues(a, b) : compareValues(a, b);
+  }
+
+  abstract withDescending(desc: boolean): WindowRankingExpr;
 }
 
 // ── rank(): 1-based, ties get same rank, gaps after ──
@@ -26,18 +34,20 @@ export class WindowRankExpr extends WindowRankingExpr {
     return `rank(${this._source.toString()})`;
   }
 
+  withDescending(desc: boolean): WindowRankExpr {
+    return new WindowRankExpr(this._source, desc);
+  }
+
   evaluate(df: DataFrame): Series<number> {
     const series = this._source.evaluate(df);
     const len = series.length;
 
-    // Build (value, originalIndex) pairs, treating nulls as largest
     const indexed: { value: unknown; idx: number }[] = [];
     for (let i = 0; i < len; i++) {
       indexed.push({ value: series.get(i), idx: i });
     }
 
-    // Sort ascending (nulls last)
-    indexed.sort((a, b) => compareValues(a.value, b.value));
+    indexed.sort((a, b) => this._sortCompare(a.value, b.value));
 
     const ranks = new Array<number | null>(len);
     let rank = 1;
@@ -59,6 +69,10 @@ export class WindowDenseRankExpr extends WindowRankingExpr {
     return `dense_rank(${this._source.toString()})`;
   }
 
+  withDescending(desc: boolean): WindowDenseRankExpr {
+    return new WindowDenseRankExpr(this._source, desc);
+  }
+
   evaluate(df: DataFrame): Series<number> {
     const series = this._source.evaluate(df);
     const len = series.length;
@@ -68,7 +82,7 @@ export class WindowDenseRankExpr extends WindowRankingExpr {
       indexed.push({ value: series.get(i), idx: i });
     }
 
-    indexed.sort((a, b) => compareValues(a.value, b.value));
+    indexed.sort((a, b) => this._sortCompare(a.value, b.value));
 
     const ranks = new Array<number | null>(len);
     let rank = 1;
@@ -90,6 +104,10 @@ export class WindowRowNumberExpr extends WindowRankingExpr {
     return `row_number(${this._source.toString()})`;
   }
 
+  withDescending(desc: boolean): WindowRowNumberExpr {
+    return new WindowRowNumberExpr(this._source, desc);
+  }
+
   evaluate(df: DataFrame): Series<number> {
     const series = this._source.evaluate(df);
     const len = series.length;
@@ -99,7 +117,7 @@ export class WindowRowNumberExpr extends WindowRankingExpr {
       indexed.push({ value: series.get(i), idx: i });
     }
 
-    indexed.sort((a, b) => compareValues(a.value, b.value));
+    indexed.sort((a, b) => this._sortCompare(a.value, b.value));
 
     const ranks = new Array<number | null>(len);
     for (let i = 0; i < indexed.length; i++) {
@@ -117,6 +135,10 @@ export class WindowPercentRankExpr extends WindowRankingExpr {
     return `percent_rank(${this._source.toString()})`;
   }
 
+  withDescending(desc: boolean): WindowPercentRankExpr {
+    return new WindowPercentRankExpr(this._source, desc);
+  }
+
   evaluate(df: DataFrame): Series<number> {
     const series = this._source.evaluate(df);
     const len = series.length;
@@ -131,7 +153,7 @@ export class WindowPercentRankExpr extends WindowRankingExpr {
       indexed.push({ value: series.get(i), idx: i });
     }
 
-    indexed.sort((a, b) => compareValues(a.value, b.value));
+    indexed.sort((a, b) => this._sortCompare(a.value, b.value));
 
     const ranks = new Array<number | null>(len);
     let rank = 1;
@@ -151,13 +173,17 @@ export class WindowPercentRankExpr extends WindowRankingExpr {
 export class WindowNtileExpr extends WindowRankingExpr {
   private readonly _n: number;
 
-  constructor(source: Expr<unknown>, n: number) {
-    super(source);
+  constructor(source: Expr<unknown>, n: number, descending = false) {
+    super(source, descending);
     this._n = n;
   }
 
   toString(): string {
     return `ntile(${this._source.toString()}, ${this._n})`;
+  }
+
+  withDescending(desc: boolean): WindowNtileExpr {
+    return new WindowNtileExpr(this._source, this._n, desc);
   }
 
   evaluate(df: DataFrame): Series<number> {
@@ -169,7 +195,7 @@ export class WindowNtileExpr extends WindowRankingExpr {
       indexed.push({ value: series.get(i), idx: i });
     }
 
-    indexed.sort((a, b) => compareValues(a.value, b.value));
+    indexed.sort((a, b) => this._sortCompare(a.value, b.value));
 
     const results = new Array<number | null>(len);
     for (let i = 0; i < indexed.length; i++) {
@@ -689,7 +715,7 @@ export class EwmExpr extends Expr<number> {
 // ── Partitioned Window Expression (.over()) ──
 
 export class PartitionedWindowExpr extends Expr<number> {
-  private readonly _inner: Expr<number>;
+  readonly _inner: Expr<number>;
   private readonly _partitionCols: string[];
 
   constructor(inner: Expr<number>, partitionCols: string[]) {
@@ -761,6 +787,76 @@ function serializeKey(columns: Column<unknown>[], index: number): string {
   return parts.join('\x01');
 }
 
+// ── Ordered Window Expression (.orderBy()) ──
+
+export class OrderedWindowExpr extends Expr<number> {
+  private readonly _inner: Expr<number>;
+  private readonly _orderCol: string;
+  private readonly _direction: 'asc' | 'desc';
+
+  constructor(inner: Expr<number>, orderCol: string, direction: 'asc' | 'desc' = 'asc') {
+    super();
+    this._inner = inner;
+    this._orderCol = orderCol;
+    this._direction = direction;
+  }
+
+  get dependencies(): string[] {
+    return [...new Set([...this._inner.dependencies, this._orderCol])];
+  }
+
+  toString(): string {
+    return `${this._inner.toString()}.orderBy(${this._orderCol}, ${this._direction})`;
+  }
+
+  evaluate(df: DataFrame): Series<number> {
+    const len = df.length;
+    const descending = this._direction === 'desc';
+
+    // Apply ranking direction to ranking expressions in the tree
+    const directedInner = applyRankingDirection(this._inner, descending);
+
+    // Pre-sort DF by orderBy column (affects sequential functions like cumSum, shift, rolling)
+    const orderCol = df.col(this._orderCol).column;
+    const indices: number[] = [];
+    for (let i = 0; i < len; i++) indices.push(i);
+
+    const dir = descending ? -1 : 1;
+    indices.sort((a, b) => dir * compareValues(orderCol.get(a), orderCol.get(b)));
+
+    // Create a reordered DataFrame
+    const int32Indices = new Int32Array(indices);
+    const columnOrder = df.columns;
+    const newColumns = new Map<string, Column<unknown>>();
+    for (const name of columnOrder) {
+      newColumns.set(name, df.col(name).column.take(int32Indices));
+    }
+    const sortedDf = new DataFrame(newColumns, columnOrder);
+
+    // Evaluate on the sorted DataFrame
+    const sortedResult = directedInner.evaluate(sortedDf);
+
+    // Map results back to original order
+    const results = new Array<number | null>(len);
+    for (let i = 0; i < len; i++) {
+      results[indices[i]!] = sortedResult.get(i);
+    }
+
+    return new Series<number>('orderBy', Float64Column.from(results));
+  }
+}
+
+function applyRankingDirection(expr: Expr<number>, descending: boolean): Expr<number> {
+  if (expr instanceof WindowRankingExpr) {
+    return expr.withDescending(descending);
+  }
+  if (expr instanceof PartitionedWindowExpr) {
+    const directedInner = applyRankingDirection(expr._inner, descending);
+    return new PartitionedWindowExpr(directedInner, expr['_partitionCols']);
+  }
+  return expr;
+}
+
 // ── Module augmentation: add methods to Expr ──
 
 declare module '../expr/expr' {
@@ -786,6 +882,7 @@ declare module '../expr/expr' {
     rollingMax(windowSize: number): Expr<number>;
     ewm(alpha: number): Expr<number>;
     over(...partitionCols: string[]): Expr<number>;
+    orderBy(column: string, direction?: 'asc' | 'desc'): Expr<number>;
   }
 }
 
@@ -867,4 +964,12 @@ Expr.prototype.ewm = function (this: Expr<unknown>, alpha: number): Expr<number>
 
 Expr.prototype.over = function (this: Expr<number>, ...partitionCols: string[]): Expr<number> {
   return new PartitionedWindowExpr(this, partitionCols);
+};
+
+Expr.prototype.orderBy = function (
+  this: Expr<number>,
+  column: string,
+  direction: 'asc' | 'desc' = 'asc',
+): Expr<number> {
+  return new OrderedWindowExpr(this, column, direction);
 };

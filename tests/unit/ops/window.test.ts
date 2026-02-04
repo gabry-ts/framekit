@@ -447,3 +447,136 @@ describe('Window .over() partitioning', () => {
     });
   });
 });
+
+describe('Window .over().orderBy() ordered window computations', () => {
+  function getValues(result: DataFrame, colName: string): (number | null)[] {
+    const vals: (number | null)[] = [];
+    for (let i = 0; i < result.length; i++) {
+      vals.push(result.col(colName).get(i) as number | null);
+    }
+    return vals;
+  }
+
+  describe('rank with orderBy', () => {
+    it('should rank by amount descending within each region', () => {
+      const df = DataFrame.fromRows([
+        { region: 'East', amount: 100 },
+        { region: 'East', amount: 200 },
+        { region: 'West', amount: 300 },
+        { region: 'East', amount: 150 },
+        { region: 'West', amount: 100 },
+      ]);
+      const result = df.withColumn('r', col('amount').rank().over('region').orderBy('amount', 'desc'));
+      const ranks = getValues(result, 'r');
+      // orderBy desc sorts amounts descending before ranking
+      // East partition sorted desc: [200, 150, 100] → ranks [1, 2, 3]
+      // West partition sorted desc: [300, 100] → ranks [1, 2]
+      // Back to original order: idx0=East(100→3), idx1=East(200→1), idx2=West(300→1), idx3=East(150→2), idx4=West(100→2)
+      expect(ranks).toEqual([3, 1, 1, 2, 2]);
+    });
+
+    it('should rank ascending by default when orderBy has no direction', () => {
+      const df = DataFrame.fromRows([
+        { region: 'A', amount: 30 },
+        { region: 'A', amount: 10 },
+        { region: 'A', amount: 20 },
+      ]);
+      const result = df.withColumn('r', col('amount').rank().over('region').orderBy('amount'));
+      const ranks = getValues(result, 'r');
+      // sorted asc: [10, 20, 30] → ranks [1, 2, 3]
+      // original order: idx0=30→3, idx1=10→1, idx2=20→2
+      expect(ranks).toEqual([3, 1, 2]);
+    });
+  });
+
+  describe('cumSum with orderBy', () => {
+    it('should compute cumulative sum in orderBy order', () => {
+      const df = DataFrame.fromRows([
+        { region: 'A', amount: 30 },
+        { region: 'A', amount: 10 },
+        { region: 'A', amount: 20 },
+      ]);
+      const result = df.withColumn('cs', col('amount').cumSum().over('region').orderBy('amount'));
+      const sums = getValues(result, 'cs');
+      // sorted asc by amount: [10, 20, 30] → cumSum [10, 30, 60]
+      // original order: idx0=30→60, idx1=10→10, idx2=20→30
+      expect(sums).toEqual([60, 10, 30]);
+    });
+  });
+
+  describe('shift with orderBy', () => {
+    it('should compute shift in orderBy order', () => {
+      const df = DataFrame.fromRows([
+        { region: 'A', amount: 30 },
+        { region: 'A', amount: 10 },
+        { region: 'A', amount: 20 },
+      ]);
+      const result = df.withColumn('s', col('amount').shift(1).over('region').orderBy('amount'));
+      const shifted = getValues(result, 's');
+      // sorted asc by amount: [10, 20, 30] → shift(1) [null, 10, 20]
+      // original order: idx0=30→20, idx1=10→null, idx2=20→10
+      expect(shifted).toEqual([20, null, 10]);
+    });
+  });
+
+  describe('rolling with orderBy', () => {
+    it('should compute rolling mean in orderBy order', () => {
+      const df = DataFrame.fromRows([
+        { region: 'A', amount: 30 },
+        { region: 'A', amount: 10 },
+        { region: 'A', amount: 20 },
+      ]);
+      const result = df.withColumn('rm', col('amount').rollingMean(2).over('region').orderBy('amount'));
+      const means = getValues(result, 'rm');
+      // sorted asc by amount: [10, 20, 30] → rollingMean(2) [null, 15, 25]
+      // original order: idx0=30→25, idx1=10→null, idx2=20→15
+      expect(means).toEqual([25, null, 15]);
+    });
+  });
+
+  describe('without orderBy uses original row order', () => {
+    it('should use original row order when orderBy is not specified', () => {
+      const df = DataFrame.fromRows([
+        { region: 'A', amount: 30 },
+        { region: 'A', amount: 10 },
+        { region: 'A', amount: 20 },
+      ]);
+      const result = df.withColumn('cs', col('amount').cumSum().over('region'));
+      const sums = getValues(result, 'cs');
+      // original order: [30, 10, 20] → cumSum [30, 40, 60]
+      expect(sums).toEqual([30, 40, 60]);
+    });
+  });
+
+  describe('orderBy without over', () => {
+    it('should sort globally before computing window function', () => {
+      const df = DataFrame.fromRows([
+        { amount: 30 },
+        { amount: 10 },
+        { amount: 20 },
+      ]);
+      const result = df.withColumn('cs', col('amount').cumSum().orderBy('amount'));
+      const sums = getValues(result, 'cs');
+      // sorted asc: [10, 20, 30] → cumSum [10, 30, 60]
+      // original order: idx0=30→60, idx1=10→10, idx2=20→30
+      expect(sums).toEqual([60, 10, 30]);
+    });
+  });
+
+  describe('orderBy with multiple partitions', () => {
+    it('should order within each partition independently', () => {
+      const df = DataFrame.fromRows([
+        { region: 'East', amount: 200 },
+        { region: 'West', amount: 100 },
+        { region: 'East', amount: 100 },
+        { region: 'West', amount: 300 },
+      ]);
+      const result = df.withColumn('r', col('amount').rank().over('region').orderBy('amount', 'desc'));
+      const ranks = getValues(result, 'r');
+      // East sorted desc: [200, 100] → ranks [1, 2]
+      // West sorted desc: [300, 100] → ranks [1, 2]
+      // original order: idx0=East(200→1), idx1=West(100→2), idx2=East(100→2), idx3=West(300→1)
+      expect(ranks).toEqual([1, 2, 2, 1]);
+    });
+  });
+});

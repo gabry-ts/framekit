@@ -88,6 +88,7 @@ export {
   DiffExpr,
   PctChangeExpr,
   PartitionedWindowExpr,
+  OrderedWindowExpr,
 } from './ops/window';
 import './expr/expr-accessors';
 import './ops/window';
