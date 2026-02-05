@@ -8,5 +8,8 @@ export default defineConfig({
     },
     include: ['tests/**/*.test.ts'],
     passWithNoTests: true,
+    benchmark: {
+      include: ['tests/benchmarks/**/*.bench.ts'],
+    },
   },
 });
