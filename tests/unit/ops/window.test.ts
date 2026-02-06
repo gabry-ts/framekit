@@ -448,6 +448,279 @@ describe('Window .over() partitioning', () => {
   });
 });
 
+describe('Rolling window functions', () => {
+  function getValues(result: DataFrame, colName: string): (number | null)[] {
+    const vals: (number | null)[] = [];
+    for (let i = 0; i < result.length; i++) {
+      vals.push(result.col(colName).get(i) as number | null);
+    }
+    return vals;
+  }
+
+  describe('rollingMean()', () => {
+    it('should compute rolling mean with window size 3', () => {
+      const df = DataFrame.fromRows([
+        { amount: 10 },
+        { amount: 20 },
+        { amount: 30 },
+        { amount: 40 },
+        { amount: 50 },
+      ]);
+      const result = df.withColumn('rm', col('amount').rollingMean(3));
+      expect(getValues(result, 'rm')).toEqual([null, null, 20, 30, 40]);
+    });
+
+    it('should compute rolling mean with window size 2', () => {
+      const df = DataFrame.fromRows([
+        { amount: 10 },
+        { amount: 20 },
+        { amount: 30 },
+      ]);
+      const result = df.withColumn('rm', col('amount').rollingMean(2));
+      expect(getValues(result, 'rm')).toEqual([null, 15, 25]);
+    });
+
+    it('should handle nulls in rolling mean window', () => {
+      const df = DataFrame.fromRows([
+        { amount: 10 },
+        { amount: null },
+        { amount: 30 },
+        { amount: 40 },
+      ]);
+      const result = df.withColumn('rm', col('amount').rollingMean(2));
+      // window [10, null] → mean of non-null = 10/1 = 10
+      // window [null, 30] → mean = 30/1 = 30
+      // window [30, 40] → mean = 35
+      expect(getValues(result, 'rm')).toEqual([null, 10, 30, 35]);
+    });
+  });
+
+  describe('rollingSum()', () => {
+    it('should compute rolling sum with window size 3', () => {
+      const df = DataFrame.fromRows([
+        { amount: 10 },
+        { amount: 20 },
+        { amount: 30 },
+        { amount: 40 },
+        { amount: 50 },
+      ]);
+      const result = df.withColumn('rs', col('amount').rollingSum(3));
+      expect(getValues(result, 'rs')).toEqual([null, null, 60, 90, 120]);
+    });
+
+    it('should handle nulls in rolling sum window', () => {
+      const df = DataFrame.fromRows([
+        { amount: 10 },
+        { amount: null },
+        { amount: 30 },
+        { amount: 40 },
+      ]);
+      const result = df.withColumn('rs', col('amount').rollingSum(2));
+      // window [10, null] → sum = 10
+      // window [null, 30] → sum = 30
+      // window [30, 40] → sum = 70
+      expect(getValues(result, 'rs')).toEqual([null, 10, 30, 70]);
+    });
+  });
+
+  describe('rollingStd()', () => {
+    it('should compute rolling std with window size 3', () => {
+      const df = DataFrame.fromRows([
+        { amount: 10 },
+        { amount: 20 },
+        { amount: 30 },
+        { amount: 40 },
+      ]);
+      const result = df.withColumn('rstd', col('amount').rollingStd(3));
+      const vals = getValues(result, 'rstd');
+      expect(vals[0]).toBeNull();
+      expect(vals[1]).toBeNull();
+      // std of [10, 20, 30] = 10 (sample std)
+      expect(vals[2]).toBeCloseTo(10, 5);
+      // std of [20, 30, 40] = 10 (sample std)
+      expect(vals[3]).toBeCloseTo(10, 5);
+    });
+  });
+
+  describe('rollingMin() and rollingMax()', () => {
+    it('should compute rolling min', () => {
+      const df = DataFrame.fromRows([
+        { amount: 30 },
+        { amount: 10 },
+        { amount: 50 },
+        { amount: 20 },
+      ]);
+      const result = df.withColumn('rmin', col('amount').rollingMin(2));
+      expect(getValues(result, 'rmin')).toEqual([null, 10, 10, 20]);
+    });
+
+    it('should compute rolling max', () => {
+      const df = DataFrame.fromRows([
+        { amount: 30 },
+        { amount: 10 },
+        { amount: 50 },
+        { amount: 20 },
+      ]);
+      const result = df.withColumn('rmax', col('amount').rollingMax(2));
+      expect(getValues(result, 'rmax')).toEqual([null, 30, 50, 50]);
+    });
+
+    it('should handle nulls in rolling min/max', () => {
+      const df = DataFrame.fromRows([
+        { amount: 30 },
+        { amount: null },
+        { amount: 10 },
+      ]);
+      const resultMin = df.withColumn('rmin', col('amount').rollingMin(2));
+      const resultMax = df.withColumn('rmax', col('amount').rollingMax(2));
+      // window [30, null] → min=30, max=30
+      // window [null, 10] → min=10, max=10
+      expect(getValues(resultMin, 'rmin')).toEqual([null, 30, 10]);
+      expect(getValues(resultMax, 'rmax')).toEqual([null, 30, 10]);
+    });
+  });
+
+  describe('ewm()', () => {
+    it('should compute exponential weighted moving average', () => {
+      const df = DataFrame.fromRows([
+        { amount: 10 },
+        { amount: 20 },
+        { amount: 30 },
+      ]);
+      const result = df.withColumn('e', col('amount').ewm(0.5));
+      const vals = getValues(result, 'e');
+      // First value: 10
+      // Second: 0.5*20 + 0.5*10 = 15
+      // Third: 0.5*30 + 0.5*15 = 22.5
+      expect(vals).toEqual([10, 15, 22.5]);
+    });
+
+    it('should handle nulls by carrying forward', () => {
+      const df = DataFrame.fromRows([
+        { amount: 10 },
+        { amount: null },
+        { amount: 30 },
+      ]);
+      const result = df.withColumn('e', col('amount').ewm(0.5));
+      const vals = getValues(result, 'e');
+      // First: 10
+      // Second (null): carry forward ewma = 10
+      // Third: 0.5*30 + 0.5*10 = 20
+      expect(vals).toEqual([10, 10, 20]);
+    });
+  });
+});
+
+describe('Null handling across all window functions', () => {
+  function getValues(result: DataFrame, colName: string): (number | null)[] {
+    const vals: (number | null)[] = [];
+    for (let i = 0; i < result.length; i++) {
+      vals.push(result.col(colName).get(i) as number | null);
+    }
+    return vals;
+  }
+
+  it('should handle all-null series in ranking functions', () => {
+    const df = DataFrame.fromRows([
+      { amount: null },
+      { amount: null },
+      { amount: null },
+    ]);
+    const rankResult = df.withColumn('r', col('amount').rank());
+    // All nulls are equal → all rank 1
+    expect(getValues(rankResult, 'r')).toEqual([1, 1, 1]);
+
+    const denseResult = df.withColumn('dr', col('amount').denseRank());
+    expect(getValues(denseResult, 'dr')).toEqual([1, 1, 1]);
+  });
+
+  it('should handle all-null series in cumulative functions', () => {
+    const df = DataFrame.fromRows([
+      { amount: null },
+      { amount: null },
+    ]);
+    const csResult = df.withColumn('cs', col('amount').cumSum());
+    expect(getValues(csResult, 'cs')).toEqual([0, 0]);
+
+    const cmaxResult = df.withColumn('cmax', col('amount').cumMax());
+    expect(getValues(cmaxResult, 'cmax')).toEqual([null, null]);
+
+    const cminResult = df.withColumn('cmin', col('amount').cumMin());
+    expect(getValues(cminResult, 'cmin')).toEqual([null, null]);
+  });
+
+  it('should handle nulls in shift function', () => {
+    const df = DataFrame.fromRows([
+      { amount: null },
+      { amount: 10 },
+      { amount: null },
+    ]);
+    const result = df.withColumn('s', col('amount').shift(1));
+    expect(getValues(result, 's')).toEqual([null, null, 10]);
+  });
+
+  it('should handle nulls in diff function', () => {
+    const df = DataFrame.fromRows([
+      { amount: 10 },
+      { amount: null },
+      { amount: 30 },
+      { amount: 40 },
+    ]);
+    const result = df.withColumn('d', col('amount').diff());
+    // null - 10 = null; 30 - null = null; 40 - 30 = 10
+    expect(getValues(result, 'd')).toEqual([null, null, null, 10]);
+  });
+
+  it('should handle nulls in rollingMean with all-null window', () => {
+    const df = DataFrame.fromRows([
+      { amount: null },
+      { amount: null },
+      { amount: 10 },
+    ]);
+    const result = df.withColumn('rm', col('amount').rollingMean(2));
+    // window [null, null] → count=0 → null
+    // window [null, 10] → mean=10
+    expect(getValues(result, 'rm')).toEqual([null, null, 10]);
+  });
+
+  it('should handle null partition keys in .over()', () => {
+    const df = DataFrame.fromRows([
+      { region: 'East', amount: 100 },
+      { region: null, amount: 200 },
+      { region: 'East', amount: 300 },
+      { region: null, amount: 400 },
+    ]);
+    const result = df.withColumn('cs', col('amount').cumSum().over('region'));
+    const sums = getValues(result, 'cs');
+    // East (indices 0,2): [100, 300] → cumSum [100, 400]
+    // null (indices 1,3): [200, 400] → cumSum [200, 600]
+    expect(sums).toEqual([100, 200, 400, 600]);
+  });
+});
+
+describe('Empty DataFrame window functions', () => {
+  function getValues(result: DataFrame, colName: string): (number | null)[] {
+    const vals: (number | null)[] = [];
+    for (let i = 0; i < result.length; i++) {
+      vals.push(result.col(colName).get(i) as number | null);
+    }
+    return vals;
+  }
+
+  it('should handle single-row DataFrame for ranking', () => {
+    const single = DataFrame.fromRows([{ amount: 42 }]);
+    const result = single.withColumn('r', col('amount').rank());
+    expect(getValues(result, 'r')).toEqual([1]);
+  });
+
+  it('should handle single-row DataFrame for rolling', () => {
+    const df = DataFrame.fromRows([{ amount: 42 }]);
+    const result = df.withColumn('rm', col('amount').rollingMean(3));
+    // Window size 3 but only 1 row → null
+    expect(getValues(result, 'rm')).toEqual([null]);
+  });
+});
+
 describe('Window .over().orderBy() ordered window computations', () => {
   function getValues(result: DataFrame, colName: string): (number | null)[] {
     const vals: (number | null)[] = [];
