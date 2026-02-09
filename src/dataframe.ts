@@ -1,5 +1,5 @@
 import { DType } from './types/dtype';
-import type { CSVReadOptions, CSVWriteOptions, JSONReadOptions, JSONWriteOptions, PrintOptions, SampleOptions, ExcelReadOptions, ExcelWriteOptions } from './types/options';
+import type { CSVReadOptions, CSVWriteOptions, JSONReadOptions, JSONWriteOptions, PrintOptions, SampleOptions, ExcelReadOptions, ExcelWriteOptions, ParquetReadOptions } from './types/options';
 import { ColumnNotFoundError, ErrorCode, FrameKitError, IOError, ShapeMismatchError } from './errors';
 import { Column } from './storage/column';
 import { Float64Column, Int32Column } from './storage/numeric';
@@ -18,6 +18,7 @@ import { streamNDJSONFile } from './engine/streaming/ndjson-scanner';
 import type { StreamNDJSONOptions } from './engine/streaming/ndjson-scanner';
 import { writeJSON, writeNDJSON } from './io/json/writer';
 import { readExcelFile } from './io/excel/reader';
+import { readParquetFile } from './io/parquet/reader';
 import { writeExcelFile } from './io/excel/writer';
 import { GroupBy } from './ops/groupby';
 import { hashJoin } from './ops/join';
@@ -1136,6 +1137,26 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
     options: ExcelReadOptions = {},
   ): Promise<DataFrame<S>> {
     const parsed = await readExcelFile(filePath, options);
+
+    if (parsed.header.length === 0) {
+      return DataFrame.empty<S>();
+    }
+
+    const columns = new Map<string, Column<unknown>>();
+    for (const name of parsed.header) {
+      const dtype = parsed.inferredTypes[name] ?? DType.Float64;
+      const values = parsed.columns[name]!;
+      columns.set(name, buildColumn(dtype, values));
+    }
+
+    return new DataFrame<S>(columns, [...parsed.header]);
+  }
+
+  static async fromParquet<S extends Record<string, unknown> = Record<string, unknown>>(
+    filePath: string,
+    options: ParquetReadOptions = {},
+  ): Promise<DataFrame<S>> {
+    const parsed = await readParquetFile(filePath, options);
 
     if (parsed.header.length === 0) {
       return DataFrame.empty<S>();

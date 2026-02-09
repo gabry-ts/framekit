@@ -11,6 +11,7 @@ export type {
   SampleOptions,
   ExcelReadOptions,
   ExcelWriteOptions,
+  ParquetReadOptions,
 } from './types/options';
 export {
   ErrorCode,

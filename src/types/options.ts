@@ -51,6 +51,10 @@ export interface ExcelReadOptions {
   dtypes?: Record<string, DType> | undefined;
 }
 
+export interface ParquetReadOptions {
+  columns?: string[];
+}
+
 export interface ExcelWriteOptions {
   sheet?: string | undefined;
   autoFilter?: boolean | undefined;

@@ -51,10 +51,14 @@
     "vitest": "^2.0.0"
   },
   "peerDependencies": {
-    "exceljs": "^4.0.0"
+    "exceljs": "^4.0.0",
+    "parquet-wasm": ">=0.5.0"
   },
   "peerDependenciesMeta": {
     "exceljs": {
+      "optional": true
+    },
+    "parquet-wasm": {
       "optional": true
     }
   },
