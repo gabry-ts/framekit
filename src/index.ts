@@ -9,6 +9,7 @@ export type {
   NDJSONReadOptions,
   PrintOptions,
   SampleOptions,
+  ExcelReadOptions,
 } from './types/options';
 export {
   ErrorCode,

@@ -1,5 +1,5 @@
 import { DType } from './types/dtype';
-import type { CSVReadOptions, CSVWriteOptions, JSONReadOptions, JSONWriteOptions, PrintOptions, SampleOptions } from './types/options';
+import type { CSVReadOptions, CSVWriteOptions, JSONReadOptions, JSONWriteOptions, PrintOptions, SampleOptions, ExcelReadOptions } from './types/options';
 import { ColumnNotFoundError, ErrorCode, FrameKitError, IOError, ShapeMismatchError } from './errors';
 import { Column } from './storage/column';
 import { Float64Column, Int32Column } from './storage/numeric';
@@ -17,6 +17,7 @@ import type { StreamCSVOptions } from './engine/streaming/scanner';
 import { streamNDJSONFile } from './engine/streaming/ndjson-scanner';
 import type { StreamNDJSONOptions } from './engine/streaming/ndjson-scanner';
 import { writeJSON, writeNDJSON } from './io/json/writer';
+import { readExcelFile } from './io/excel/reader';
 import { GroupBy } from './ops/groupby';
 import { hashJoin } from './ops/join';
 import type { JoinType, JoinOnMapping, JoinOptions } from './ops/join';
@@ -1127,6 +1128,26 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
     const rows: object[] = lines.map((line) => JSON.parse(line) as object);
 
     return DataFrame.fromRows<S>(rows);
+  }
+
+  static async fromExcel<S extends Record<string, unknown> = Record<string, unknown>>(
+    filePath: string,
+    options: ExcelReadOptions = {},
+  ): Promise<DataFrame<S>> {
+    const parsed = await readExcelFile(filePath, options);
+
+    if (parsed.header.length === 0) {
+      return DataFrame.empty<S>();
+    }
+
+    const columns = new Map<string, Column<unknown>>();
+    for (const name of parsed.header) {
+      const dtype = parsed.inferredTypes[name] ?? DType.Float64;
+      const values = parsed.columns[name]!;
+      columns.set(name, buildColumn(dtype, values));
+    }
+
+    return new DataFrame<S>(columns, [...parsed.header]);
   }
 
   toNDJSON(): string;

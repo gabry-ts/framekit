@@ -43,3 +43,10 @@ export interface PrintOptions {
 export interface SampleOptions {
   seed?: number;
 }
+
+export interface ExcelReadOptions {
+  sheet?: string | number;
+  hasHeader?: boolean | undefined;
+  range?: string | undefined;
+  dtypes?: Record<string, DType> | undefined;
+}
