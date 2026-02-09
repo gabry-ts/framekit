@@ -50,3 +50,11 @@ export interface ExcelReadOptions {
   range?: string | undefined;
   dtypes?: Record<string, DType> | undefined;
 }
+
+export interface ExcelWriteOptions {
+  sheet?: string | undefined;
+  autoFilter?: boolean | undefined;
+  freezePanes?: { row: number; col: number } | undefined;
+  columnWidths?: Record<string, number> | undefined;
+  startCell?: string | undefined;
+}

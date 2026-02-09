@@ -10,6 +10,7 @@ export type {
   PrintOptions,
   SampleOptions,
   ExcelReadOptions,
+  ExcelWriteOptions,
 } from './types/options';
 export {
   ErrorCode,
