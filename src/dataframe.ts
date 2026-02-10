@@ -1229,6 +1229,45 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
     return new DataFrame<S>(columns, [...parsed.header]);
   }
 
+  async toArrowIPC(): Promise<Uint8Array> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let arrow: any;
+    try {
+      const moduleName = 'apache-arrow';
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      arrow = await import(moduleName);
+    } catch {
+      throw new IOError(
+        'apache-arrow is required for Arrow IPC serialization but is not installed. Run: npm install apache-arrow',
+      );
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const table = await this.toArrow();
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+    return arrow.tableToIPC(table, 'stream') as Uint8Array;
+  }
+
+  static async fromArrowIPC<S extends Record<string, unknown> = Record<string, unknown>>(
+    buffer: Uint8Array,
+  ): Promise<DataFrame<S>> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let arrow: any;
+    try {
+      const moduleName = 'apache-arrow';
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      arrow = await import(moduleName);
+    } catch {
+      throw new IOError(
+        'apache-arrow is required for Arrow IPC deserialization but is not installed. Run: npm install apache-arrow',
+      );
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-assignment
+    const table = arrow.tableFromIPC(buffer);
+    return DataFrame.fromArrow<S>(table);
+  }
+
   toNDJSON(): string;
   toNDJSON(filePath: string): Promise<void>;
   toNDJSON(filePath?: string): string | Promise<void> {
