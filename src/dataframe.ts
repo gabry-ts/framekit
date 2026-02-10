@@ -21,6 +21,8 @@ import { readExcelFile } from './io/excel/reader';
 import { readParquetFile } from './io/parquet/reader';
 import { writeExcelFile } from './io/excel/writer';
 import { writeParquetFile } from './io/parquet/writer';
+import { toArrowTable } from './io/arrow/to-arrow';
+import { fromArrowTable } from './io/arrow/from-arrow';
 import { GroupBy } from './ops/groupby';
 import { hashJoin } from './ops/join';
 import type { JoinType, JoinOnMapping, JoinOptions } from './ops/join';
@@ -1190,6 +1192,41 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
       columns[name] = { values, dtype: col.dtype };
     }
     await writeParquetFile(filePath, header, columns, options);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async toArrow(): Promise<any> {
+    return toArrowTable({
+      columnOrder: this._columnOrder,
+      getColumnValues: (name: string) => {
+        const col = this._columns.get(name)!;
+        const values: unknown[] = [];
+        for (let i = 0; i < col.length; i++) {
+          values.push(col.get(i));
+        }
+        return { values, dtype: col.dtype };
+      },
+    });
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static fromArrow<S extends Record<string, unknown> = Record<string, unknown>>(
+    table: any,
+  ): DataFrame<S> {
+    const parsed = fromArrowTable(table);
+
+    if (parsed.header.length === 0) {
+      return DataFrame.empty<S>();
+    }
+
+    const columns = new Map<string, Column<unknown>>();
+    for (const name of parsed.header) {
+      const dtype = parsed.inferredTypes[name] ?? DType.Float64;
+      const values = parsed.columns[name]!;
+      columns.set(name, buildColumn(dtype, values));
+    }
+
+    return new DataFrame<S>(columns, [...parsed.header]);
   }
 
   toNDJSON(): string;
