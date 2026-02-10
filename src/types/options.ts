@@ -55,6 +55,11 @@ export interface ParquetReadOptions {
   columns?: string[];
 }
 
+export interface ParquetWriteOptions {
+  compression?: 'snappy' | 'gzip' | 'zstd' | 'none' | undefined;
+  rowGroupSize?: number | undefined;
+}
+
 export interface ExcelWriteOptions {
   sheet?: string | undefined;
   autoFilter?: boolean | undefined;

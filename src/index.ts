@@ -12,6 +12,7 @@ export type {
   ExcelReadOptions,
   ExcelWriteOptions,
   ParquetReadOptions,
+  ParquetWriteOptions,
 } from './types/options';
 export {
   ErrorCode,

@@ -1,5 +1,5 @@
 import { DType } from './types/dtype';
-import type { CSVReadOptions, CSVWriteOptions, JSONReadOptions, JSONWriteOptions, PrintOptions, SampleOptions, ExcelReadOptions, ExcelWriteOptions, ParquetReadOptions } from './types/options';
+import type { CSVReadOptions, CSVWriteOptions, JSONReadOptions, JSONWriteOptions, PrintOptions, SampleOptions, ExcelReadOptions, ExcelWriteOptions, ParquetReadOptions, ParquetWriteOptions } from './types/options';
 import { ColumnNotFoundError, ErrorCode, FrameKitError, IOError, ShapeMismatchError } from './errors';
 import { Column } from './storage/column';
 import { Float64Column, Int32Column } from './storage/numeric';
@@ -20,6 +20,7 @@ import { writeJSON, writeNDJSON } from './io/json/writer';
 import { readExcelFile } from './io/excel/reader';
 import { readParquetFile } from './io/parquet/reader';
 import { writeExcelFile } from './io/excel/writer';
+import { writeParquetFile } from './io/parquet/writer';
 import { GroupBy } from './ops/groupby';
 import { hashJoin } from './ops/join';
 import type { JoinType, JoinOnMapping, JoinOptions } from './ops/join';
@@ -1175,6 +1176,20 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
   async toExcel(filePath: string, options: ExcelWriteOptions = {}): Promise<void> {
     const { header, rows } = this._extractRows();
     await writeExcelFile(filePath, header, rows, options);
+  }
+
+  async toParquet(filePath: string, options: ParquetWriteOptions = {}): Promise<void> {
+    const header = this._columnOrder;
+    const columns: Record<string, { values: unknown[]; dtype: DType }> = {};
+    for (const name of header) {
+      const col = this._columns.get(name)!;
+      const values: unknown[] = [];
+      for (let i = 0; i < col.length; i++) {
+        values.push(col.get(i));
+      }
+      columns[name] = { values, dtype: col.dtype };
+    }
+    await writeParquetFile(filePath, header, columns, options);
   }
 
   toNDJSON(): string;
