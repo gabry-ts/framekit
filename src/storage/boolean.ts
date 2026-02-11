@@ -21,7 +21,7 @@ export class BooleanColumn extends Column<boolean> {
   }
 
   slice(start: number, end: number): BooleanColumn {
-    const sliced = this._data.slice(start, end);
+    const sliced = this._data.subarray(start, end);
     const mask = new BitArray(sliced.length);
     for (let i = 0; i < sliced.length; i++) {
       mask.set(i, this._nullMask.get(start + i));

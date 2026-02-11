@@ -21,7 +21,7 @@ export class DateColumn extends Column<Date> {
   }
 
   slice(start: number, end: number): DateColumn {
-    const sliced = this._data.slice(start, end);
+    const sliced = this._data.subarray(start, end);
     const mask = new BitArray(sliced.length);
     for (let i = 0; i < sliced.length; i++) {
       mask.set(i, this._nullMask.get(start + i));

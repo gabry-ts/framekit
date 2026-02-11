@@ -42,6 +42,9 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
   constructor(columns: Map<string, Column<unknown>>, columnOrder: string[]) {
     this._columns = columns;
     this._columnOrder = columnOrder;
+    for (const col of columns.values()) {
+      col.addRef();
+    }
   }
 
   get shape(): [number, number] {

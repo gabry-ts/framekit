@@ -5,6 +5,7 @@ export abstract class Column<T> {
   abstract readonly dtype: DType;
   protected readonly _nullMask: BitArray;
   protected readonly _length: number;
+  private _refCount = 1;
 
   constructor(length: number, nullMask?: BitArray) {
     this._length = length;
@@ -17,6 +18,24 @@ export abstract class Column<T> {
 
   get nullCount(): number {
     return this._nullMask.countZeros();
+  }
+
+  addRef(): void {
+    this._refCount++;
+  }
+
+  release(): void {
+    if (this._refCount > 0) {
+      this._refCount--;
+    }
+  }
+
+  get refCount(): number {
+    return this._refCount;
+  }
+
+  get isShared(): boolean {
+    return this._refCount > 1;
   }
 
   abstract get(index: number): T | null;
