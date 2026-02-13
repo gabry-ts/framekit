@@ -37,6 +37,8 @@ export { DateAccessor } from './accessors/date-accessor';
 export type { TimeUnit } from './accessors/date-accessor';
 export { DataFrame } from './dataframe';
 export { GroupBy } from './ops/groupby';
+export type { ParallelAggOptions, AggSpec } from './engine/parallelism/types';
+export { shouldUseParallel } from './engine/parallelism/parallel-agg';
 export type { JoinType, JoinOnMapping, JoinOptions } from './ops/join';
 export type { PivotOptions, PivotAggFunc } from './ops/pivot';
 export type { MeltOptions } from './ops/melt';

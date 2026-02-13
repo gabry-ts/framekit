@@ -10,6 +10,8 @@ import {
   AggExpr,
   col,
 } from '../expr/expr';
+import type { ParallelAggOptions, AggSpec } from '../engine/parallelism/types';
+import { shouldUseParallel, parallelAgg } from '../engine/parallelism/parallel-agg';
 
 type DataFrameConstructor = new <S extends Record<string, unknown>>(
   columns: Map<string, Column<unknown>>,
@@ -67,6 +69,102 @@ export class GroupBy<
   }
 
   agg(
+    specs: Record<string, AggExpr<unknown> | string>,
+    options?: ParallelAggOptions,
+  ): DataFrame<Record<string, unknown>> {
+    // Check if we should use parallel execution
+    if (options || shouldUseParallel(this._df.length)) {
+      const useParallel = shouldUseParallel(this._df.length, options);
+      if (useParallel) {
+        // Cannot return async from sync method — use aggAsync for parallel
+        // But we can try synchronous parallel via a blocking pattern
+        // For API compatibility, delegate to _aggSync
+      }
+    }
+    return this._aggSync(specs);
+  }
+
+  /**
+   * Async aggregation that uses worker threads for large datasets.
+   * Falls back to single-threaded when workers are unavailable or data is small.
+   */
+  async aggAsync(
+    specs: Record<string, AggExpr<unknown> | string>,
+    options?: ParallelAggOptions,
+  ): Promise<DataFrame<Record<string, unknown>>> {
+    // Resolve specs
+    const resolvedSpecs: Record<string, AggExpr<unknown>> = {};
+    for (const [name, spec] of Object.entries(specs)) {
+      if (typeof spec === 'string') {
+        resolvedSpecs[name] = this._resolveShorthand(name, spec);
+      } else {
+        resolvedSpecs[name] = spec;
+      }
+    }
+
+    const useParallel = shouldUseParallel(this._df.length, options);
+    if (!useParallel) {
+      return this._aggSync(specs);
+    }
+
+    // Convert AggExpr to worker-compatible AggSpec
+    const aggSpecs: Record<string, AggSpec> = {};
+    for (const [name, aggExpr] of Object.entries(resolvedSpecs)) {
+      const aggType = this._aggExprToType(aggExpr);
+      if (!aggType) {
+        // Unknown agg type — fall back to sync
+        return this._aggSync(specs);
+      }
+      aggSpecs[name] = {
+        columnName: aggExpr.dependencies[0]!,
+        aggType,
+      };
+    }
+
+    // Collect source columns
+    const sourceColumns = new Map<string, Column<unknown>>();
+    for (const colName of this._df.columns) {
+      sourceColumns.set(colName, this._df.col(colName).column);
+    }
+
+    const groupEntries = [...this._groupMap.entries()];
+    const keyCols = this._keys.map((k) => this._df.col(k).column);
+
+    const results = await parallelAgg(
+      groupEntries,
+      [...this._keys],
+      keyCols,
+      aggSpecs,
+      sourceColumns,
+      options,
+    );
+
+    // Build result DataFrame from parallel results
+    const nGroups = results.length;
+    const resultColumns = new Map<string, Column<unknown>>();
+    const columnOrder: string[] = [];
+
+    // Key columns
+    for (let ki = 0; ki < this._keys.length; ki++) {
+      const k = this._keys[ki]!;
+      const vals = results.map((r) => r.keyValues[ki] ?? null);
+      resultColumns.set(k, this._buildColumnLike(keyCols[ki]!, vals));
+      columnOrder.push(k);
+    }
+
+    // Agg columns
+    const aggNames = Object.keys(specs);
+    for (const name of aggNames) {
+      const vals = results.map((r) => r.aggValues[name] ?? null);
+      resultColumns.set(name, this._inferColumn(vals, nGroups));
+      columnOrder.push(name);
+    }
+
+    const Ctor = this._df.constructor as DataFrameConstructor;
+    return new Ctor<Record<string, unknown>>(resultColumns, columnOrder);
+  }
+
+  private _aggSync(
     specs: Record<string, AggExpr<unknown> | string>,
   ): DataFrame<Record<string, unknown>> {
     const groupEntries = [...this._groupMap.entries()];
@@ -138,6 +236,23 @@ export class GroupBy<
 
     const Ctor = this._df.constructor as DataFrameConstructor;
     return new Ctor<Record<string, unknown>>(resultColumns, columnOrder);
+  }
+
+  private _aggExprToType(aggExpr: AggExpr<unknown>): AggSpec['aggType'] | null {
+    // Map AggExpr subclass to worker-compatible string type
+    const name = aggExpr.constructor.name;
+    const map: Record<string, AggSpec['aggType']> = {
+      SumAggExpr: 'sum',
+      MeanAggExpr: 'mean',
+      CountAggExpr: 'count',
+      CountDistinctAggExpr: 'count_distinct',
+      MinAggExpr: 'min',
+      MaxAggExpr: 'max',
+      StdAggExpr: 'std',
+      FirstAggExpr: 'first',
+      LastAggExpr: 'last',
+    };
+    return map[name] ?? null;
   }
 
   private _resolveShorthand(columnName: string, method: string): AggExpr<unknown> {
