@@ -909,13 +909,39 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
   }
 
   static async fromCSV<S extends Record<string, unknown> = Record<string, unknown>>(
-    input: string,
+    input: string | import('stream').Readable,
     options: CSVReadOptions & { parse?: 'string' } = {},
   ): Promise<DataFrame<S>> {
     let content: string;
 
-    if (options.parse === 'string') {
+    if (typeof input !== 'string') {
+      // Node.js ReadableStream
+      try {
+        const chunks: Buffer[] = [];
+        for await (const chunk of input as AsyncIterable<Buffer>) {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as unknown as string));
+        }
+        content = Buffer.concat(chunks).toString((options.encoding ?? 'utf-8') as BufferEncoding);
+      } catch (err) {
+        if (err instanceof IOError) throw err;
+        const message = err instanceof Error ? err.message : String(err);
+        throw new IOError(`Failed to read CSV from stream: ${message}`);
+      }
+    } else if (options.parse === 'string') {
       content = input;
+    } else if (input.startsWith('http://') || input.startsWith('https://')) {
+      // URL — use native fetch()
+      try {
+        const response = await fetch(input);
+        if (!response.ok) {
+          throw new IOError(`Failed to fetch CSV from '${input}': HTTP ${String(response.status)} ${response.statusText}`);
+        }
+        content = await response.text();
+      } catch (err) {
+        if (err instanceof IOError) throw err;
+        const message = err instanceof Error ? err.message : String(err);
+        throw new IOError(`Failed to fetch CSV from '${input}': ${message}`);
+      }
     } else {
       // Treat input as a file path
       try {
@@ -996,22 +1022,51 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
 
   toCSV(options?: CSVWriteOptions): string;
   toCSV(filePath: string, options?: CSVWriteOptions): Promise<void>;
+  toCSV(stream: import('stream').Writable, options?: CSVWriteOptions): Promise<void>;
   toCSV(
-    filePathOrOptions?: string | CSVWriteOptions,
+    filePathOrOptions?: string | CSVWriteOptions | import('stream').Writable,
     maybeOptions?: CSVWriteOptions,
   ): string | Promise<void> {
     let filePath: string | undefined;
+    let writable: import('stream').Writable | undefined;
     let options: CSVWriteOptions;
 
     if (typeof filePathOrOptions === 'string') {
       filePath = filePathOrOptions;
       options = maybeOptions ?? {};
+    } else if (filePathOrOptions != null && typeof filePathOrOptions === 'object' && 'write' in filePathOrOptions && typeof filePathOrOptions.write === 'function') {
+      // Node.js Writable stream
+      writable = filePathOrOptions;
+      options = maybeOptions ?? {};
     } else {
-      options = filePathOrOptions ?? {};
+      options = (filePathOrOptions ?? {}) as CSVWriteOptions;
     }
 
     const { header, rows } = this._extractRows();
     const csvString = writeCSV(header, rows, options);
+
+    if (writable) {
+      const stream = writable;
+      return new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const fail = (err: Error) => {
+          if (settled) return;
+          settled = true;
+          reject(new IOError(`Failed to write CSV to stream: ${err.message}`));
+        };
+        stream.once('error', fail);
+        stream.write(csvString, 'utf-8', (err?: Error | null) => {
+          if (err) {
+            fail(err);
+          } else {
+            if (settled) return;
+            settled = true;
+            stream.removeListener('error', fail);
+            resolve();
+          }
+        });
+      });
+    }
 
     if (filePath) {
       return import('fs/promises').then((fs) =>
