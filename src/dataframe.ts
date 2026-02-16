@@ -37,7 +37,15 @@ import type { LazyFrame } from './lazy';
 import { createLazyFrame } from './lazy';
 import { executeQuery } from './ops/query';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type ReaderFn = (source: string | Buffer, options?: any) => Promise<DataFrame>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type WriterFn = (df: DataFrame, path: string, options?: any) => Promise<void>;
+
 export class DataFrame<S extends Record<string, unknown> = Record<string, unknown>> {
+  private static readonly _readers = new Map<string, ReaderFn>();
+  private static readonly _writers = new Map<string, WriterFn>();
+
   private readonly _columns: Map<string, Column<unknown>>;
   private readonly _columnOrder: string[];
 
@@ -1360,6 +1368,59 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
 
   query(queryStr: string): DataFrame<Record<string, unknown>> {
     return executeQuery(this as DataFrame, queryStr);
+  }
+
+  static registerReader(extension: string, readerFn: ReaderFn): void {
+    const ext = extension.startsWith('.') ? extension.slice(1) : extension;
+    DataFrame._readers.set(ext.toLowerCase(), readerFn);
+  }
+
+  static registerWriter(extension: string, writerFn: WriterFn): void {
+    const ext = extension.startsWith('.') ? extension.slice(1) : extension;
+    DataFrame._writers.set(ext.toLowerCase(), writerFn);
+  }
+
+  static async fromFile<S extends Record<string, unknown> = Record<string, unknown>>(
+    filePath: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    options?: any,
+  ): Promise<DataFrame<S>> {
+    const ext = filePath.split('.').pop()?.toLowerCase();
+    if (!ext) {
+      throw new IOError(`Cannot determine file extension from path: '${filePath}'`);
+    }
+    const reader = DataFrame._readers.get(ext);
+    if (!reader) {
+      throw new IOError(
+        `No reader registered for extension '.${ext}'. Use DataFrame.registerReader('${ext}', readerFn) to register one.`,
+      );
+    }
+    const fs = await import('fs/promises');
+    let source: Buffer;
+    try {
+      source = await fs.readFile(filePath);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new IOError(`Failed to read file '${filePath}': ${message}`);
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+    return reader(source, options) as Promise<DataFrame<S>>;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async toFile(filePath: string, options?: any): Promise<void> {
+    const ext = filePath.split('.').pop()?.toLowerCase();
+    if (!ext) {
+      throw new IOError(`Cannot determine file extension from path: '${filePath}'`);
+    }
+    const writer = DataFrame._writers.get(ext);
+    if (!writer) {
+      throw new IOError(
+        `No writer registered for extension '.${ext}'. Use DataFrame.registerWriter('${ext}', writerFn) to register one.`,
+      );
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+    await writer(this as DataFrame, filePath, options);
   }
 }
 
