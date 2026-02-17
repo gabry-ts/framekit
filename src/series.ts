@@ -124,6 +124,65 @@ export class Series<T> {
     return values[mid]!;
   }
 
+  between(low: number, high: number): Series<boolean> {
+    const col = this._asNumericColumn();
+    const results: (boolean | null)[] = [];
+    for (let i = 0; i < col.length; i++) {
+      const val = col.get(i);
+      if (val === null) {
+        results.push(null);
+      } else {
+        results.push(val >= low && val <= high);
+      }
+    }
+    return new Series<boolean>(this._name, BooleanColumn.from(results));
+  }
+
+  cumSum(): Series<number> {
+    const col = this._asNumericColumn();
+    const results: (number | null)[] = [];
+    let running = 0;
+    for (let i = 0; i < col.length; i++) {
+      const val = col.get(i);
+      if (val === null) {
+        results.push(null);
+      } else {
+        running += val;
+        results.push(running);
+      }
+    }
+    return new Series<number>(this._name, Float64Column.from(results));
+  }
+
+  abs(): Series<number> {
+    const col = this._asNumericColumn();
+    const results: (number | null)[] = [];
+    for (let i = 0; i < col.length; i++) {
+      const val = col.get(i);
+      if (val === null) {
+        results.push(null);
+      } else {
+        results.push(Math.abs(val));
+      }
+    }
+    return new Series<number>(this._name, Float64Column.from(results));
+  }
+
+  round(decimals = 0): Series<number> {
+    const col = this._asNumericColumn();
+    const factor = Math.pow(10, decimals);
+    const results: (number | null)[] = [];
+    for (let i = 0; i < col.length; i++) {
+      const val = col.get(i);
+      if (val === null) {
+        results.push(null);
+      } else {
+        results.push(Math.round(val * factor) / factor);
+      }
+    }
+    return new Series<number>(this._name, Float64Column.from(results));
+  }
+
   // Comparison methods
   eq(value: T): Series<boolean> {
     return this._compareScalar(value, (a, b) => a === b);
