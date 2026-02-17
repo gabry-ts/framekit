@@ -392,6 +392,22 @@ export class GroupBy<
     return this.agg(specs);
   }
 
+  apply(fn: (group: DataFrame<S>) => DataFrame<S>): DataFrame<S> {
+    const results: DataFrame<S>[] = [];
+    for (const [, indices] of this._groupMap) {
+      const subFrame = this._buildSubFrame(indices);
+      results.push(fn(subFrame));
+    }
+    if (results.length === 0) {
+      return this._df.slice(0, 0);
+    }
+    // Use static concat via constructor reference to avoid circular import
+    const Ctor = this._df.constructor as DataFrameConstructor & {
+      concat(...frames: DataFrame<Record<string, unknown>>[]): DataFrame<Record<string, unknown>>;
+    };
+    return Ctor.concat(...(results as DataFrame<Record<string, unknown>>[])) as DataFrame<S>;
+  }
+
   groups(): Map<string, DataFrame<S>> {
     const result = new Map<string, DataFrame<S>>();
     for (const [key, indices] of this._groupMap) {

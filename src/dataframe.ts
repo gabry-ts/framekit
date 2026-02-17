@@ -270,6 +270,17 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
     return this._takeByIndices(indices);
   }
 
+  apply(fn: (row: S) => S): DataFrame<S> {
+    if (this.length === 0) {
+      return new DataFrame<S>(new Map(), [...this._columnOrder]);
+    }
+    const rows: S[] = [];
+    for (let i = 0; i < this.length; i++) {
+      rows.push(fn(this.row(i)));
+    }
+    return DataFrame.fromRows<S>(rows);
+  }
+
   where(column: string, op: '=' | '!=' | '>' | '>=' | '<' | '<=', value: unknown): DataFrame<S> {
     const colExpr = col(column);
     const litValue = value;
