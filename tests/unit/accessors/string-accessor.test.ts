@@ -173,6 +173,36 @@ describe('StringAccessor', () => {
     });
   });
 
+  describe('extract', () => {
+    it('should extract first capture group from regex', () => {
+      const result = strSeries(['abc123', 'def456', 'ghi789']).str.extract(/([0-9]+)/);
+      expect(result.toArray()).toEqual(['123', '456', '789']);
+    });
+
+    it('should return null for non-matching strings', () => {
+      const result = strSeries(['abc123', 'nodigits', 'xyz789']).str.extract(/([0-9]+)/);
+      expect(result.toArray()).toEqual(['123', null, '789']);
+    });
+
+    it('should handle null values', () => {
+      const result = strSeries(['abc123', null, 'xyz789']).str.extract(/([0-9]+)/);
+      expect(result.toArray()).toEqual(['123', null, '789']);
+    });
+
+    it('should throw if pattern has no capture group', () => {
+      expect(() => strSeries(['abc']).str.extract(/[0-9]+/)).toThrow('capture group');
+    });
+
+    it('should not throw for escaped parentheses', () => {
+      expect(() => strSeries(['abc(1)']).str.extract(/\([0-9]+\)/)).toThrow('capture group');
+    });
+
+    it('should extract first capture group only', () => {
+      const result = strSeries(['2024-01-15']).str.extract(/(\d{4})-(\d{2})-(\d{2})/);
+      expect(result.toArray()).toEqual(['2024']);
+    });
+  });
+
   describe('chaining', () => {
     it('should support method chaining', () => {
       const result = strSeries(['  Hello World  ', '  Foo  '])

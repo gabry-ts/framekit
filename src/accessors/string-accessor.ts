@@ -88,6 +88,30 @@ export class StringAccessor {
     return this._mapString((s) => s.padEnd(length, fillChar));
   }
 
+  extract(pattern: RegExp): Series<string> {
+    const source = pattern.source;
+    if (!source.includes('(') || source.replace(/\\\(/g, '').indexOf('(') === -1) {
+      throw new TypeMismatchError(
+        'extract() pattern must contain at least one capture group',
+      );
+    }
+    const results: (string | null)[] = [];
+    for (let i = 0; i < this._series.length; i++) {
+      const val = this._series.get(i);
+      if (val === null) {
+        results.push(null);
+      } else {
+        const match = val.match(pattern);
+        if (match && match[1] !== undefined) {
+          results.push(match[1]);
+        } else {
+          results.push(null);
+        }
+      }
+    }
+    return new Series<string>(this._series.name, Utf8Column.from(results));
+  }
+
   private _mapString(fn: (value: string) => string): Series<string> {
     const results: (string | null)[] = [];
     for (let i = 0; i < this._series.length; i++) {
