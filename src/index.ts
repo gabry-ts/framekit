@@ -60,6 +60,8 @@ export {
   LastAggExpr,
   ListAggExpr,
   ModeAggExpr,
+  CoalesceExpr,
+  FillNullExpr,
 } from './expr/expr';
 export { when, WhenBuilder, ThenBuilder } from './expr/conditional-expr';
 export { LazyFrame, LazyGroupBy } from './lazy';

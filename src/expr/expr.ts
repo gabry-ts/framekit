@@ -132,6 +132,26 @@ export abstract class Expr<T> {
   mode(): ModeAggExpr<T> {
     return new ModeAggExpr<T>(this._aggColumnName());
   }
+
+  // ── Null handling ──
+
+  coalesce(...others: Array<Expr<T> | T>): Expr<T> {
+    const exprs = others.map(o => (o instanceof Expr ? o : new LiteralExpr<T>(o)));
+    return new CoalesceExpr<T>([this, ...exprs]);
+  }
+
+  fillNull(value: Expr<T> | T): Expr<T> {
+    const valExpr = value instanceof Expr ? value : new LiteralExpr<T>(value);
+    return new FillNullExpr<T>(this, valExpr);
+  }
+
+  isNull(): Expr<boolean> {
+    return new IsNullExpr(this);
+  }
+
+  isNotNull(): Expr<boolean> {
+    return new IsNotNullExpr(this);
+  }
 }
 
 export class NamedExpr<T> {
@@ -657,5 +677,146 @@ export class ModeAggExpr<T> extends AggExpr<T> {
       }
     }
     return best;
+  }
+}
+
+// ── Null Handling Expressions ──
+
+export class CoalesceExpr<T> extends Expr<T> {
+  private readonly _exprs: Expr<T>[];
+
+  constructor(exprs: Expr<T>[]) {
+    super();
+    this._exprs = exprs;
+  }
+
+  get dependencies(): string[] {
+    const deps = new Set<string>();
+    for (const e of this._exprs) {
+      for (const d of e.dependencies) {
+        deps.add(d);
+      }
+    }
+    return [...deps];
+  }
+
+  toString(): string {
+    return `coalesce(${this._exprs.map(e => e.toString()).join(', ')})`;
+  }
+
+  evaluate(df: DataFrame): Series<T> {
+    const evaluated = this._exprs.map(e => e.evaluate(df));
+    const len = evaluated[0]!.length;
+    const results: (T | null)[] = [];
+
+    for (let i = 0; i < len; i++) {
+      let found: T | null = null;
+      for (const s of evaluated) {
+        const v = s.get(i);
+        if (v !== null) {
+          found = v;
+          break;
+        }
+      }
+      results.push(found);
+    }
+
+    const firstSeries = evaluated[0]!;
+    const dtype = firstSeries.column.dtype;
+    const col = buildColumnForValues(dtype, results as unknown[]);
+    return new Series<T>('', col as Column<T>);
+  }
+}
+
+export class FillNullExpr<T> extends Expr<T> {
+  private readonly _inner: Expr<T>;
+  private readonly _fill: Expr<T>;
+
+  constructor(inner: Expr<T>, fill: Expr<T>) {
+    super();
+    this._inner = inner;
+    this._fill = fill;
+  }
+
+  get dependencies(): string[] {
+    return [...new Set([...this._inner.dependencies, ...this._fill.dependencies])];
+  }
+
+  toString(): string {
+    return `fillNull(${this._inner.toString()}, ${this._fill.toString()})`;
+  }
+
+  evaluate(df: DataFrame): Series<T> {
+    const innerSeries = this._inner.evaluate(df);
+    const fillSeries = this._fill.evaluate(df);
+    const len = innerSeries.length;
+    const results: (T | null)[] = [];
+
+    for (let i = 0; i < len; i++) {
+      const v = innerSeries.get(i);
+      results.push(v !== null ? v : fillSeries.get(i));
+    }
+
+    const dtype = innerSeries.column.dtype;
+    const col = buildColumnForValues(dtype, results as unknown[]);
+    return new Series<T>('', col as Column<T>);
+  }
+}
+
+class IsNullExpr extends Expr<boolean> {
+  private readonly _inner: Expr<unknown>;
+
+  constructor(inner: Expr<unknown>) {
+    super();
+    this._inner = inner;
+  }
+
+  get dependencies(): string[] {
+    return this._inner.dependencies;
+  }
+
+  toString(): string {
+    return `${this._inner.toString()} IS NULL`;
+  }
+
+  evaluate(df: DataFrame): Series<boolean> {
+    const innerSeries = this._inner.evaluate(df);
+    const len = innerSeries.length;
+    const results: (boolean | null)[] = [];
+
+    for (let i = 0; i < len; i++) {
+      results.push(innerSeries.get(i) === null);
+    }
+
+    return new Series<boolean>('', BooleanColumn.from(results));
+  }
+}
+
+class IsNotNullExpr extends Expr<boolean> {
+  private readonly _inner: Expr<unknown>;
+
+  constructor(inner: Expr<unknown>) {
+    super();
+    this._inner = inner;
+  }
+
+  get dependencies(): string[] {
+    return this._inner.dependencies;
+  }
+
+  toString(): string {
+    return `${this._inner.toString()} IS NOT NULL`;
+  }
+
+  evaluate(df: DataFrame): Series<boolean> {
+    const innerSeries = this._inner.evaluate(df);
+    const len = innerSeries.length;
+    const results: (boolean | null)[] = [];
+
+    for (let i = 0; i < len; i++) {
+      results.push(innerSeries.get(i) !== null);
+    }
+
+    return new Series<boolean>('', BooleanColumn.from(results));
   }
 }
