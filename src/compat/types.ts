@@ -32,8 +32,14 @@ export type ColumnSelector = AllSelector | NotSelector | RangeSelector;
 /** A sort specification: plain column name (ascending) or DescSpec. */
 export type SortSpec = string | DescSpec;
 
-/** Expression function passed to derive/rollup. */
+/** Expression function passed to derive (row-level). */
 export type ExprFn<T = unknown> = (d: Record<string, unknown>) => T;
 
-/** A record of named expression functions. */
+/** A record of named expression functions (row-level, for derive). */
 export type ExprRecord = Record<string, ExprFn>;
+
+/** Aggregation expression function passed to rollup (column-level). */
+export type AggExprFn<T = unknown> = (d: Record<string, unknown[]>) => T;
+
+/** A record of named aggregation expression functions (for rollup). */
+export type AggExprRecord = Record<string, AggExprFn>;
