@@ -28,3 +28,13 @@
   - Empty DataFrames (DataFrame.empty()) have 0 columns and 0 length — handle in shape checks
   - ShapeMismatchError is the right error for row count mismatches between DataFrames
 ---
+
+## 2026-02-26 - US-007
+- What was implemented: DataFrame.relocate(columns, { before | after }) method for reordering columns
+- Files changed: src/dataframe.ts, tests/unit/dataframe-relocate.test.ts (new)
+- **Learnings for future iterations:**
+  - relocate works by filtering source columns out of _columnOrder, finding anchor index in remaining, then splicing
+  - new DataFrame(new Map(this._columns), newOrder) reuses column references safely (CoW)
+  - FrameKitError with ErrorCode.INVALID_OPERATION is used for logical errors (both before+after, neither before nor after)
+  - ColumnNotFoundError for missing source or anchor columns
+---
