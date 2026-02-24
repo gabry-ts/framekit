@@ -126,6 +126,10 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
     return new DataFrame<S>(clonedColumns, [...this._columnOrder]);
   }
 
+  reify(): DataFrame<S> {
+    return this.clone();
+  }
+
   lazy(): LazyFrame<S> {
     return createLazyFrame(this);
   }
