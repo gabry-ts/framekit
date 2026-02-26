@@ -394,6 +394,89 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
         const literal = (cmpAny._right as unknown as { _value: unknown })._value;
         const source = this._columns.get(columnName);
         if (source) {
+          // Fast path: interned Utf8Column with eq/neq — integer comparison on dictionary indices
+          if (
+            source instanceof Utf8Column &&
+            source.isInterned &&
+            typeof literal === 'string' &&
+            (cmpAny._op === 'eq' || cmpAny._op === 'neq')
+          ) {
+            const interned = source.internedStorage!;
+            const targetIdx = interned.dictionary.indexOf(literal);
+            const isEq = cmpAny._op === 'eq';
+
+            if (isEq && targetIdx === -1) {
+              return this.slice(0, 0);
+            }
+
+            const internedIndices = interned.indices;
+            const n = this.length;
+
+            if (source.allValid) {
+              // No nulls — pure integer scan
+              let count = 0;
+              if (isEq) {
+                for (let i = 0; i < n; i++) {
+                  if (internedIndices[i] === targetIdx) count++;
+                }
+              } else {
+                if (targetIdx === -1) {
+                  // neq with value not in dictionary: all match
+                  return this;
+                }
+                for (let i = 0; i < n; i++) {
+                  if (internedIndices[i] !== targetIdx) count++;
+                }
+              }
+
+              if (count === n) return this;
+              if (count === 0) return this.slice(0, 0);
+
+              const indices = new Int32Array(count);
+              let pos = 0;
+              if (isEq) {
+                for (let i = 0; i < n; i++) {
+                  if (internedIndices[i] === targetIdx) indices[pos++] = i;
+                }
+              } else {
+                for (let i = 0; i < n; i++) {
+                  if (internedIndices[i] !== targetIdx) indices[pos++] = i;
+                }
+              }
+              return this._takeByInt32Indices(indices);
+            } else {
+              // Has nulls — check null mask
+              const nullMask = source.nullMask;
+              let count = 0;
+              if (isEq) {
+                for (let i = 0; i < n; i++) {
+                  if (nullMask.getUnsafe(i) && internedIndices[i] === targetIdx) count++;
+                }
+              } else {
+                for (let i = 0; i < n; i++) {
+                  if (nullMask.getUnsafe(i) && internedIndices[i] !== targetIdx) count++;
+                }
+              }
+
+              if (count === n) return this;
+              if (count === 0) return this.slice(0, 0);
+
+              const indices = new Int32Array(count);
+              let pos = 0;
+              if (isEq) {
+                for (let i = 0; i < n; i++) {
+                  if (nullMask.getUnsafe(i) && internedIndices[i] === targetIdx) indices[pos++] = i;
+                }
+              } else {
+                for (let i = 0; i < n; i++) {
+                  if (nullMask.getUnsafe(i) && internedIndices[i] !== targetIdx) indices[pos++] = i;
+                }
+              }
+              return this._takeByInt32Indices(indices);
+            }
+          }
+
+          // Generic fast path for other ops
           let count = 0;
           for (let i = 0; i < this.length; i++) {
             const v = source.get(i);
@@ -560,9 +643,56 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
     // Fast path: single-column sort for primitive/date values
     if (cols.length === 1) {
       const sortCol = this._columns.get(cols[0]!)!;
+      const desc = orders[0] === 'desc';
+
+      // Interned Utf8 fast path: sort dictionary once, then sort by rank integer
+      if (sortCol instanceof Utf8Column && sortCol.isInterned) {
+        const interned = sortCol.internedStorage!;
+        const dictLen = interned.dictionary.length;
+
+        // Sort dictionary entries to get rank mapping
+        const sortedDictIndices = Array.from({ length: dictLen }, (_, i) => i);
+        sortedDictIndices.sort((a, b) => {
+          const sa = interned.dictionary[a]!;
+          const sb = interned.dictionary[b]!;
+          const cmp = sa < sb ? -1 : sa > sb ? 1 : 0;
+          return desc ? -cmp : cmp;
+        });
+
+        // Build rank array: rank[dictIdx] = sortPosition
+        const rank = new Uint32Array(dictLen);
+        for (let r = 0; r < dictLen; r++) {
+          rank[sortedDictIndices[r]!] = r;
+        }
+
+        const n = this.length;
+        const internedIndices = interned.indices;
+        const indices = Array.from({ length: n }, (_, i) => i);
+
+        if (sortCol.allValid) {
+          indices.sort((a, b) => rank[internedIndices[a]!]! - rank[internedIndices[b]!]!);
+        } else {
+          const nullMask = sortCol.nullMask;
+          indices.sort((a, b) => {
+            const aValid = nullMask.getUnsafe(a);
+            const bValid = nullMask.getUnsafe(b);
+            if (!aValid && !bValid) return 0;
+            if (!aValid) return 1;
+            if (!bValid) return -1;
+            return rank[internedIndices[a]!]! - rank[internedIndices[b]!]!;
+          });
+        }
+
+        const int32Indices = new Int32Array(indices);
+        const newColumns = new Map<string, Column<unknown>>();
+        for (const name of this._columnOrder) {
+          newColumns.set(name, this._columns.get(name)!.take(int32Indices));
+        }
+        return new DataFrame<S>(newColumns, [...this._columnOrder]);
+      }
+
       const vals: unknown[] = new Array(this.length);
       for (let i = 0; i < this.length; i++) vals[i] = sortCol.get(i);
-      const desc = orders[0] === 'desc';
 
       const indices = Array.from({ length: this.length }, (_, i) => i);
       indices.sort((a, b) => {
