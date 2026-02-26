@@ -123,6 +123,8 @@ Start here for migration examples: `docs/guides/migration-arquero.md`.
 - API references: `docs/reference/`
 - GitHub Wiki: `https://github.com/gabry-ts/framekit/wiki`
 
+Wiki pages are sourced from `wiki/` and can be synced through `.github/workflows/wiki-sync.yml`.
+
 ## Benchmarks and Quality
 
 - Benchmark compare runners and outputs live under `tests/benchmarks/` and `benchmarks/results/`.
