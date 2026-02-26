@@ -62,7 +62,7 @@
     "@types/node": "^25.3.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
-    "@vitest/coverage-v8": "^2.0.0",
+    "@vitest/coverage-v8": "^4.0.18",
     "apache-arrow": "^21.1.0",
     "arquero": "^8.0.3",
     "eslint": "^8.57.0",
@@ -72,7 +72,7 @@
     "prettier": "^3.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.5.0",
-    "vitest": "^2.0.0"
+    "vitest": "^4.0.18"
   },
   "peerDependencies": {
     "apache-arrow": ">=14.0.0",
