@@ -1,13 +1,26 @@
 # FrameKit
 
-FrameKit is a TypeScript-first DataFrame library for Node.js focused on practical analytics, predictable null semantics, and an API that stays ergonomic in both small scripts and production pipelines.
+FrameKit is a TypeScript-first DataFrame engine for Node.js.
+It focuses on three things that matter in real analytics projects: clear APIs, predictable null behavior, and production-ready data I/O.
 
 ## Why FrameKit
 
-- TypeScript-native DataFrame and expression APIs.
-- Eager and lazy execution modes with shared semantics.
-- Core API plus `framekit/compat` for Arquero-style migration.
-- Built-in I/O for CSV, JSON/NDJSON, Arrow, Excel, Parquet, and SQL export.
+- Strong TypeScript ergonomics for both row-level and expression-level transformations.
+- Shared semantics across eager and lazy execution.
+- Practical data engineering surface: joins, reshape, aggregations, window ops, and streaming formats.
+- Compatibility layer (`framekit/compat`) to ease migration from Arquero-style pipelines.
+
+## Feature Overview
+
+| Area               | Highlights                                                                  |
+| ------------------ | --------------------------------------------------------------------------- |
+| DataFrame core     | `select`, `drop`, `filter`, `sortBy`, `groupBy`, `join`, `unique`, `sample` |
+| Expressions        | arithmetic, comparison, logical, null helpers, string/date accessors        |
+| Aggregations       | `sum`, `mean`, `count`, `min`, `max`, `std`, `corr`, list/mode, first/last  |
+| Reshape            | `pivot`, `melt`, `explode`, `spread`, `unroll`, `transpose`, `concat`       |
+| Utility transforms | `assign`, `relocate`, `lookup`, `reify`, `impute`, `derive`, `apply`        |
+| Lazy execution     | query plans, optimizer passes, explain support, eager executor              |
+| I/O                | CSV, JSON, NDJSON, Arrow, Excel, Parquet, SQL export                        |
 
 ## Install
 
@@ -15,53 +28,52 @@ FrameKit is a TypeScript-first DataFrame library for Node.js focused on practica
 npm install framekit
 ```
 
-## Quickstart
+## 60-Second Example
 
 ```ts
-import { DataFrame, col } from 'framekit';
+import { DataFrame, col, op } from 'framekit';
 
-const df = DataFrame.fromRows([
-  { product: 'A', qty: 2, price: 10 },
-  { product: 'B', qty: 1, price: 25 },
-  { product: 'A', qty: 4, price: 10 },
+const sales = DataFrame.fromRows([
+  { region: 'EU', product: 'A', qty: 2, price: 10 },
+  { region: 'EU', product: 'B', qty: 1, price: 25 },
+  { region: 'US', product: 'A', qty: 4, price: 10 },
+  { region: 'US', product: 'B', qty: 3, price: 25 },
 ]);
 
-const out = df
+const result = sales
   .withColumn('revenue', col<number>('qty').mul(col<number>('price')))
-  .groupBy('product')
-  .agg({ total: col('revenue').sum() })
-  .sortBy('total', 'desc');
+  .groupBy('region')
+  .agg({
+    total_revenue: col('revenue').sum(),
+    avg_revenue: col('revenue').mean(),
+  })
+  .sortBy('total_revenue', 'desc');
 
-console.log(out.toArray());
+const quality = sales.groupBy().agg({
+  qty_price_corr: op.corr(col('qty'), col('price')),
+});
+
+console.log(result.toArray());
+console.log(quality.toArray());
 ```
 
-## Eager API
-
-```ts
-import { DataFrame } from 'framekit';
-
-const eager = DataFrame.fromRows([
-  { city: 'Rome', temp: 26 },
-  { city: 'Milan', temp: 31 },
-]).filter((r) => (r.temp as number) > 28);
-```
-
-## Lazy API
+## Eager and Lazy APIs
 
 ```ts
 import { DataFrame, col } from 'framekit';
 
-const lazy = DataFrame.fromRows([
+const source = DataFrame.fromRows([
   { city: 'Rome', temp: 26 },
   { city: 'Milan', temp: 31 },
-])
-  .lazy()
-  .filter(col<number>('temp').gt(28))
-  .select('city', 'temp')
-  .collect();
+  { city: 'Turin', temp: 28 },
+]);
+
+const eager = source.filter(col<number>('temp').gt(27));
+
+const lazy = source.lazy().filter(col<number>('temp').gt(27)).select('city', 'temp').collect();
 ```
 
-## I/O Support Matrix
+## I/O Matrix
 
 | Format             | Read | Write |
 | ------------------ | ---- | ----- |
@@ -73,25 +85,35 @@ const lazy = DataFrame.fromRows([
 | Parquet            | Yes  | Yes   |
 | SQL (INSERT text)  | No   | Yes   |
 
-## Core vs Compat API
+## Core and Compat APIs
 
-- `framekit`: core API (`DataFrame`, expressions, lazy plans).
-- `framekit/compat`: Arquero-style verbs (`derive`, `rollup`, `fold`, `orderby`) and helpers (`all`, `not`, `range`, `desc`).
+- `framekit`: native API (`DataFrame`, expressions, lazy plans, I/O).
+- `framekit/compat`: migration-friendly verbs (`derive`, `rollup`, `fold`, `orderby`) and helpers (`all`, `not`, `range`, `desc`).
 
-See `docs/guides/migration-arquero.md` for side-by-side mappings.
+Start here for migration examples: `docs/guides/migration-arquero.md`.
 
-## Benchmark Methodology Disclaimer
+## Documentation Map
 
-Benchmarks in this repository are intended for directional comparison only. Hardware, Node.js version, dataset shape, and warmup strategy can materially change outcomes. Always re-run benchmarks in your own environment before making production decisions.
+- Getting started: `docs/getting-started/quickstart.md`
+- Guides: `docs/guides/`
+- Cookbook examples: `docs/cookbook/`
+- API references: `docs/reference/`
 
-## Roadmap
+## Benchmarks and Quality
 
-- Stabilize compat surface and expression aggregates.
-- Expand benchmark coverage and CI regression checks.
-- Grow cookbook and API reference depth.
+- Benchmark compare runners and outputs live under `tests/benchmarks/` and `benchmarks/results/`.
+- CI includes smoke and nightly benchmark workflows.
+- Regression checks are available in the benchmark harness.
 
-See `CHANGELOG.md` for released changes.
+Benchmark outputs are directional and environment-sensitive; validate on your own hardware before drawing hard conclusions.
 
-## Contributing
+## Project Standards
 
-Please read `CONTRIBUTING.md` for local setup, test/typecheck/lint requirements, and commit conventions.
+- Changelog: `CHANGELOG.md`
+- Contributing guide: `CONTRIBUTING.md`
+- Security policy: `SECURITY.md`
+- Code of conduct: `CODE_OF_CONDUCT.md`
+
+## License
+
+MIT - see `LICENSE`.
