@@ -10,83 +10,145 @@ export interface ParsedColumns {
 
 const DEFAULT_NULL_VALUES = ['', 'null', 'NULL', 'NA', 'N/A', 'NaN', 'nan', 'None', 'none'];
 
+// Char codes for hot-loop comparisons
+const CH_QUOTE = 0x22;    // "
+const CH_LF = 0x0a;       // \n
+const CH_CR = 0x0d;       // \r
+const CH_COMMA = 0x2c;    // ,
+const CH_SEMI = 0x3b;     // ;
+const CH_TAB = 0x09;      // \t
+const CH_PIPE = 0x7c;     // |
+
 /**
  * Single-pass RFC 4180 CSV parser with auto-detection of delimiter and column types.
  */
 export function parseCSV(content: string, options: CSVReadOptions = {}): ParsedColumns {
-  const lines = splitLines(content, options);
-  if (lines.length === 0) {
+  if (content.length === 0) {
     return { header: [], columns: {}, inferredTypes: {} };
   }
 
-  const delimiter = options.delimiter ?? detectDelimiter(lines.slice(0, 10));
+  const comment = options.comment;
   const hasHeader = options.hasHeader !== false;
   const nullValues = new Set(options.nullValues ?? DEFAULT_NULL_VALUES);
+  const skipRows = options.skipRows ?? 0;
 
-  // Parse all rows
-  const allRows = lines.map((line) => parseLine(line, delimiter));
+  // We need to detect the delimiter from the first few lines
+  const delimiter = options.delimiter ?? detectDelimiterFast(content);
+  const delimCode = delimiter.charCodeAt(0);
+  const delimLen = delimiter.length;
+  const multiCharDelim = delimLen > 1;
 
-  // Skip rows
-  let dataStart = 0;
-  if (options.skipRows && options.skipRows > 0) {
-    dataStart = options.skipRows;
+  // First pass on header line: find end of header, parse header fields
+  let pos = 0;
+
+  // Skip rows if needed
+  let skipped = 0;
+  while (skipped < skipRows && pos < content.length) {
+    pos = skipLine(content, pos);
+    skipped++;
   }
 
-  // Extract header
+  // Skip comment lines before header
+  if (comment) {
+    while (pos < content.length) {
+      let lineStart = pos;
+      while (lineStart < content.length) {
+        const c = content.charCodeAt(lineStart);
+        if (c !== 0x20 && c !== CH_TAB) break;
+        lineStart++;
+      }
+      if (lineStart < content.length && content.startsWith(comment, lineStart)) {
+        pos = skipLine(content, pos);
+      } else {
+        break;
+      }
+    }
+  }
+
+  // Parse header line
   let header: string[];
-  let rowStart: number;
   if (options.header) {
     header = options.header;
-    rowStart = dataStart + (hasHeader ? 1 : 0);
-  } else if (hasHeader && dataStart < allRows.length) {
-    header = allRows[dataStart]!.map((h) => h.trim());
-    rowStart = dataStart + 1;
-  } else {
-    const firstRow = allRows[dataStart];
-    if (!firstRow) {
-      return { header: [], columns: {}, inferredTypes: {} };
+    if (hasHeader) {
+      // Skip the header line in the content
+      pos = skipLine(content, pos);
     }
-    header = firstRow.map((_, i) => `column_${i}`);
-    rowStart = dataStart;
+  } else if (hasHeader) {
+    const headerResult = parseLineFields(content, pos, delimCode, delimLen, multiCharDelim, delimiter);
+    header = headerResult.fields.map((h) => h.trim());
+    pos = headerResult.nextPos;
+  } else {
+    // No header — peek at first line to count fields
+    const peek = parseLineFields(content, pos, delimCode, delimLen, multiCharDelim, delimiter);
+    header = peek.fields.map((_, i) => `column_${i}`);
+    // Don't advance pos — first line is data
   }
 
-  // Limit rows if nRows specified
-  let rowEnd = allRows.length;
-  if (options.nRows !== undefined && options.nRows >= 0) {
-    rowEnd = Math.min(rowEnd, rowStart + options.nRows);
+  if (header.length === 0) {
+    return { header: [], columns: {}, inferredTypes: {} };
   }
 
-  // Determine which columns to include
-  const selectedColumns = options.columns
-    ? new Set(options.columns)
-    : null;
-
-  // Build column arrays
-  const columns: Record<string, (string | null)[]> = {};
+  // Determine selected columns
+  const selectedColumns = options.columns ? new Set(options.columns) : null;
   const activeHeader: string[] = [];
-  for (const name of header) {
-    if (selectedColumns && !selectedColumns.has(name)) continue;
-    activeHeader.push(name);
-    columns[name] = [];
-  }
-
-  // Column index mapping for selected columns
-  const headerIndexMap = new Map<number, string>();
+  const colIndices: number[] = []; // which field indices to keep
   for (let i = 0; i < header.length; i++) {
     const name = header[i]!;
     if (selectedColumns && !selectedColumns.has(name)) continue;
-    headerIndexMap.set(i, name);
+    activeHeader.push(name);
+    colIndices.push(i);
   }
 
-  // Fill columns from data rows
-  for (let r = rowStart; r < rowEnd; r++) {
-    const row = allRows[r];
-    if (!row) continue;
-    for (const [colIdx, colName] of headerIndexMap) {
-      const raw = colIdx < row.length ? row[colIdx]! : '';
-      const value = nullValues.has(raw) ? null : raw;
-      columns[colName]!.push(value);
+  // Pre-allocate column arrays with size estimate
+  const estimatedRows = Math.max(1, Math.floor(content.length / 40));
+  const columns: Record<string, (string | null)[]> = {};
+  for (const name of activeHeader) {
+    const arr: (string | null)[] = [];
+    // V8 hint: pre-allocate backing store
+    if (estimatedRows > 1000) {
+      arr.length = estimatedRows;
+      arr.length = 0;
     }
+    columns[name] = arr;
+  }
+
+  // Limit rows
+  const maxRows = options.nRows ?? Infinity;
+  let rowCount = 0;
+
+  // Single-pass data parsing — write directly to column arrays
+  const numActiveCols = activeHeader.length;
+  const allColumns = numActiveCols === header.length; // no column filtering
+
+  while (pos < content.length && rowCount < maxRows) {
+    // Skip comment lines
+    if (comment) {
+      let lineStart = pos;
+      // Skip leading whitespace for comment detection
+      while (lineStart < content.length) {
+        const c = content.charCodeAt(lineStart);
+        if (c !== 0x20 && c !== CH_TAB) break;
+        lineStart++;
+      }
+      if (lineStart < content.length && content.startsWith(comment, lineStart)) {
+        pos = skipLine(content, pos);
+        continue;
+      }
+    }
+
+    // Check for empty trailing line
+    if (content.charCodeAt(pos) === CH_LF || content.charCodeAt(pos) === CH_CR) {
+      pos = skipLine(content, pos);
+      continue;
+    }
+
+    // Parse one row directly into column arrays
+    if (allColumns) {
+      pos = parseRowDirect(content, pos, delimCode, delimLen, multiCharDelim, delimiter, columns, activeHeader, numActiveCols, nullValues);
+    } else {
+      pos = parseRowFiltered(content, pos, delimCode, delimLen, multiCharDelim, delimiter, columns, activeHeader, colIndices, numActiveCols, nullValues);
+    }
+    rowCount++;
   }
 
   // Infer types by sampling first 100 rows
@@ -95,134 +157,447 @@ export function parseCSV(content: string, options: CSVReadOptions = {}): ParsedC
   return { header: activeHeader, columns, inferredTypes };
 }
 
-/**
- * Split content into logical lines, handling quoted multiline fields.
- * Also filters out comment lines.
- */
-function splitLines(content: string, options: CSVReadOptions): string[] {
-  const comment = options.comment;
-  const lines: string[] = [];
-  let current = '';
+/** Skip to the start of the next line, returns position after newline. */
+function skipLine(content: string, pos: number): number {
   let inQuotes = false;
-
-  for (let i = 0; i < content.length; i++) {
-    const ch = content[i]!;
-    if (ch === '"') {
-      if (inQuotes && i + 1 < content.length && content[i + 1] === '"') {
-        current += '""';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-        current += ch;
+  while (pos < content.length) {
+    const ch = content.charCodeAt(pos);
+    if (ch === CH_QUOTE) {
+      inQuotes = !inQuotes;
+    } else if (!inQuotes) {
+      if (ch === CH_CR) {
+        pos++;
+        if (pos < content.length && content.charCodeAt(pos) === CH_LF) pos++;
+        return pos;
       }
-    } else if ((ch === '\n' || ch === '\r') && !inQuotes) {
-      if (ch === '\r' && i + 1 < content.length && content[i + 1] === '\n') {
-        i++; // skip \n after \r
+      if (ch === CH_LF) {
+        return pos + 1;
       }
-      if (current.length > 0 || lines.length > 0) {
-        if (!comment || !current.trimStart().startsWith(comment)) {
-          lines.push(current);
-        }
-      }
-      current = '';
-    } else {
-      current += ch;
     }
+    pos++;
   }
-
-  // Last line
-  if (current.length > 0) {
-    if (!comment || !current.trimStart().startsWith(comment)) {
-      lines.push(current);
-    }
-  }
-
-  return lines;
+  return pos;
 }
 
-/**
- * Parse a single CSV line into fields, respecting quoted fields and escaped quotes.
- */
-function parseLine(line: string, delimiter: string): string[] {
+interface LineResult {
+  fields: string[];
+  nextPos: number;
+}
+
+/** Parse a single line into field strings. Used for header parsing. */
+function parseLineFields(
+  content: string,
+  pos: number,
+  delimCode: number,
+  delimLen: number,
+  multiCharDelim: boolean,
+  delimiter: string,
+): LineResult {
   const fields: string[] = [];
-  let current = '';
-  let inQuotes = false;
-  let i = 0;
+  const len = content.length;
 
-  while (i < line.length) {
-    const ch = line[i]!;
+  while (pos <= len) {
+    // At end of content, or at end of line: push empty final field was handled by delimiter
+    if (pos >= len) {
+      fields.push('');
+      break;
+    }
 
-    if (inQuotes) {
-      if (ch === '"') {
-        if (i + 1 < line.length && line[i + 1] === '"') {
-          // Escaped quote
-          current += '"';
-          i += 2;
-        } else {
-          // End of quoted field
-          inQuotes = false;
-          i++;
-        }
+    const ch = content.charCodeAt(pos);
+
+    // End of line
+    if (ch === CH_CR || ch === CH_LF) {
+      fields.push('');
+      if (ch === CH_CR && pos + 1 < len && content.charCodeAt(pos + 1) === CH_LF) {
+        pos += 2;
       } else {
-        current += ch;
-        i++;
+        pos += 1;
+      }
+      return { fields, nextPos: pos };
+    }
+
+    // Quoted field
+    if (ch === CH_QUOTE) {
+      pos++; // skip opening quote
+      let fieldStart = pos;
+      let hasEscape = false;
+
+      while (pos < len) {
+        const c = content.charCodeAt(pos);
+        if (c === CH_QUOTE) {
+          if (pos + 1 < len && content.charCodeAt(pos + 1) === CH_QUOTE) {
+            hasEscape = true;
+            pos += 2;
+          } else {
+            // End of quoted field
+            break;
+          }
+        } else {
+          pos++;
+        }
+      }
+
+      let value: string;
+      if (hasEscape) {
+        value = content.substring(fieldStart, pos).replace(/""/g, '"');
+      } else {
+        value = content.substring(fieldStart, pos);
+      }
+      fields.push(value);
+
+      if (pos < len) pos++; // skip closing quote
+
+      // After quoted field: expect delimiter or end of line
+      if (pos < len) {
+        const next = content.charCodeAt(pos);
+        if (next === CH_CR || next === CH_LF) {
+          if (next === CH_CR && pos + 1 < len && content.charCodeAt(pos + 1) === CH_LF) {
+            pos += 2;
+          } else {
+            pos += 1;
+          }
+          return { fields, nextPos: pos };
+        }
+        if (multiCharDelim ? content.startsWith(delimiter, pos) : next === delimCode) {
+          pos += delimLen;
+        }
       }
     } else {
-      if (ch === '"' && current.length === 0) {
-        // Start of quoted field
-        inQuotes = true;
-        i++;
-      } else if (line.startsWith(delimiter, i)) {
-        fields.push(current);
-        current = '';
-        i += delimiter.length;
-      } else {
-        current += ch;
-        i++;
+      // Unquoted field — use substring
+      const fieldStart = pos;
+      while (pos < len) {
+        const c = content.charCodeAt(pos);
+        if (c === CH_CR || c === CH_LF) break;
+        if (multiCharDelim ? content.startsWith(delimiter, pos) : c === delimCode) break;
+        pos++;
       }
+      fields.push(content.substring(fieldStart, pos));
+
+      if (pos >= len) {
+        return { fields, nextPos: pos };
+      }
+
+      const c = content.charCodeAt(pos);
+      if (c === CH_CR || c === CH_LF) {
+        if (c === CH_CR && pos + 1 < len && content.charCodeAt(pos + 1) === CH_LF) {
+          pos += 2;
+        } else {
+          pos += 1;
+        }
+        return { fields, nextPos: pos };
+      }
+      // delimiter
+      pos += delimLen;
     }
   }
 
-  if (inQuotes) {
-    throw new ParseError('Unterminated quoted field in CSV');
+  return { fields, nextPos: pos };
+}
+
+/** Parse a row and write directly into column arrays — no column filtering. */
+function parseRowDirect(
+  content: string,
+  pos: number,
+  delimCode: number,
+  delimLen: number,
+  multiCharDelim: boolean,
+  delimiter: string,
+  columns: Record<string, (string | null)[]>,
+  activeHeader: string[],
+  numCols: number,
+  nullValues: Set<string>,
+): number {
+  const len = content.length;
+  let colIdx = 0;
+
+  while (pos < len && colIdx <= numCols) {
+    const ch = content.charCodeAt(pos);
+
+    // End of line
+    if (ch === CH_CR || ch === CH_LF) {
+      // Pad remaining columns with null
+      while (colIdx < numCols) {
+        columns[activeHeader[colIdx]!]!.push(null);
+        colIdx++;
+      }
+      if (ch === CH_CR && pos + 1 < len && content.charCodeAt(pos + 1) === CH_LF) {
+        return pos + 2;
+      }
+      return pos + 1;
+    }
+
+    if (colIdx >= numCols) {
+      // Extra columns — skip to end of line
+      return skipToEOL(content, pos);
+    }
+
+    // Quoted field
+    if (ch === CH_QUOTE) {
+      pos++; // skip opening quote
+      const fieldStart = pos;
+      let hasEscape = false;
+
+      while (pos < len) {
+        const c = content.charCodeAt(pos);
+        if (c === CH_QUOTE) {
+          if (pos + 1 < len && content.charCodeAt(pos + 1) === CH_QUOTE) {
+            hasEscape = true;
+            pos += 2;
+          } else {
+            break;
+          }
+        } else {
+          pos++;
+        }
+      }
+
+      let value: string;
+      if (hasEscape) {
+        value = content.substring(fieldStart, pos).replace(/""/g, '"');
+      } else {
+        value = content.substring(fieldStart, pos);
+      }
+
+      if (pos < len) pos++; // skip closing quote
+
+      const colArr = columns[activeHeader[colIdx]!]!;
+      colArr.push(nullValues.has(value) ? null : value);
+      colIdx++;
+
+      // Skip delimiter
+      if (pos < len) {
+        const next = content.charCodeAt(pos);
+        if (next === CH_CR || next === CH_LF) continue;
+        if (multiCharDelim ? content.startsWith(delimiter, pos) : next === delimCode) {
+          pos += delimLen;
+        }
+      }
+    } else {
+      // Unquoted field
+      const fieldStart = pos;
+      while (pos < len) {
+        const c = content.charCodeAt(pos);
+        if (c === CH_CR || c === CH_LF) break;
+        if (multiCharDelim ? content.startsWith(delimiter, pos) : c === delimCode) break;
+        pos++;
+      }
+
+      const value = content.substring(fieldStart, pos);
+      const colArr = columns[activeHeader[colIdx]!]!;
+      colArr.push(nullValues.has(value) ? null : value);
+      colIdx++;
+
+      if (pos >= len) break;
+
+      const c = content.charCodeAt(pos);
+      if (c === CH_CR || c === CH_LF) continue;
+      pos += delimLen; // skip delimiter
+    }
   }
 
-  fields.push(current);
-  return fields;
+  // Pad remaining columns if line ended early
+  while (colIdx < numCols) {
+    columns[activeHeader[colIdx]!]!.push(null);
+    colIdx++;
+  }
+
+  return pos;
+}
+
+/** Parse a row with column filtering — only extract selected column indices. */
+function parseRowFiltered(
+  content: string,
+  pos: number,
+  delimCode: number,
+  delimLen: number,
+  multiCharDelim: boolean,
+  delimiter: string,
+  columns: Record<string, (string | null)[]>,
+  activeHeader: string[],
+  colIndices: number[],
+  numActiveCols: number,
+  nullValues: Set<string>,
+): number {
+  const len = content.length;
+  let fieldIdx = 0;
+  let activeIdx = 0;
+  const nextWanted = colIndices[0] ?? -1;
+  let currentWanted = nextWanted;
+
+  while (pos < len) {
+    const ch = content.charCodeAt(pos);
+
+    // End of line
+    if (ch === CH_CR || ch === CH_LF) {
+      while (activeIdx < numActiveCols) {
+        columns[activeHeader[activeIdx]!]!.push(null);
+        activeIdx++;
+      }
+      if (ch === CH_CR && pos + 1 < len && content.charCodeAt(pos + 1) === CH_LF) {
+        return pos + 2;
+      }
+      return pos + 1;
+    }
+
+    const wanted = fieldIdx === currentWanted;
+
+    // Quoted field
+    if (ch === CH_QUOTE) {
+      pos++; // skip opening quote
+      if (wanted) {
+        const fieldStart = pos;
+        let hasEscape = false;
+        while (pos < len) {
+          const c = content.charCodeAt(pos);
+          if (c === CH_QUOTE) {
+            if (pos + 1 < len && content.charCodeAt(pos + 1) === CH_QUOTE) {
+              hasEscape = true;
+              pos += 2;
+            } else {
+              break;
+            }
+          } else {
+            pos++;
+          }
+        }
+        let value: string;
+        if (hasEscape) {
+          value = content.substring(fieldStart, pos).replace(/""/g, '"');
+        } else {
+          value = content.substring(fieldStart, pos);
+        }
+        if (pos < len) pos++; // skip closing quote
+        columns[activeHeader[activeIdx]!]!.push(nullValues.has(value) ? null : value);
+        activeIdx++;
+        currentWanted = activeIdx < numActiveCols ? colIndices[activeIdx]! : -1;
+      } else {
+        // Skip quoted field
+        while (pos < len) {
+          const c = content.charCodeAt(pos);
+          if (c === CH_QUOTE) {
+            if (pos + 1 < len && content.charCodeAt(pos + 1) === CH_QUOTE) {
+              pos += 2;
+            } else {
+              pos++;
+              break;
+            }
+          } else {
+            pos++;
+          }
+        }
+      }
+    } else {
+      // Unquoted field
+      const fieldStart = pos;
+      while (pos < len) {
+        const c = content.charCodeAt(pos);
+        if (c === CH_CR || c === CH_LF) break;
+        if (multiCharDelim ? content.startsWith(delimiter, pos) : c === delimCode) break;
+        pos++;
+      }
+
+      if (wanted) {
+        const value = content.substring(fieldStart, pos);
+        columns[activeHeader[activeIdx]!]!.push(nullValues.has(value) ? null : value);
+        activeIdx++;
+        currentWanted = activeIdx < numActiveCols ? colIndices[activeIdx]! : -1;
+      }
+    }
+
+    fieldIdx++;
+
+    if (pos >= len) break;
+    const c = content.charCodeAt(pos);
+    if (c === CH_CR || c === CH_LF) continue;
+    if (multiCharDelim ? content.startsWith(delimiter, pos) : c === delimCode) {
+      pos += delimLen;
+    }
+  }
+
+  // Pad remaining columns
+  while (activeIdx < numActiveCols) {
+    columns[activeHeader[activeIdx]!]!.push(null);
+    activeIdx++;
+  }
+
+  return pos;
+}
+
+/** Skip to end of line, handling quotes. Returns position after newline. */
+function skipToEOL(content: string, pos: number): number {
+  let inQuotes = false;
+  const len = content.length;
+  while (pos < len) {
+    const ch = content.charCodeAt(pos);
+    if (ch === CH_QUOTE) {
+      inQuotes = !inQuotes;
+    } else if (!inQuotes) {
+      if (ch === CH_CR) {
+        pos++;
+        if (pos < len && content.charCodeAt(pos) === CH_LF) pos++;
+        return pos;
+      }
+      if (ch === CH_LF) {
+        return pos + 1;
+      }
+    }
+    pos++;
+  }
+  return pos;
 }
 
 /**
  * Auto-detect delimiter from first N lines by scoring candidates.
+ * Fast version: scans raw content instead of pre-split lines.
  */
-function detectDelimiter(lines: string[]): string {
-  const candidates = [',', ';', '\t', '|'];
+function detectDelimiterFast(content: string): string {
+  const candidates = [CH_COMMA, CH_SEMI, CH_TAB, CH_PIPE];
+  const candidateStrs = [',', ';', '\t', '|'];
+
+  // Gather counts for first ~10 lines
+  const maxLines = 10;
   let bestDelimiter = ',';
   let bestScore = -1;
 
-  for (const delim of candidates) {
-    const counts = lines.map((line) => {
+  for (let ci = 0; ci < candidates.length; ci++) {
+    const delimCode = candidates[ci]!;
+    const counts: number[] = [];
+    let pos = 0;
+    let lineIdx = 0;
+
+    while (pos < content.length && lineIdx < maxLines) {
       let count = 0;
       let inQuotes = false;
-      for (let i = 0; i < line.length; i++) {
-        const ch = line[i]!;
-        if (ch === '"') inQuotes = !inQuotes;
-        else if (!inQuotes && line.startsWith(delim, i)) count++;
+      while (pos < content.length) {
+        const ch = content.charCodeAt(pos);
+        if (ch === CH_QUOTE) {
+          inQuotes = !inQuotes;
+        } else if (!inQuotes) {
+          if (ch === delimCode) count++;
+          if (ch === CH_CR || ch === CH_LF) {
+            if (ch === CH_CR && pos + 1 < content.length && content.charCodeAt(pos + 1) === CH_LF) {
+              pos++;
+            }
+            pos++;
+            break;
+          }
+        }
+        pos++;
       }
-      return count;
-    });
+      counts.push(count);
+      lineIdx++;
+    }
 
-    // Score: consistency (low variance) * average count
     if (counts.length === 0) continue;
     const avg = counts.reduce((a, b) => a + b, 0) / counts.length;
     if (avg === 0) continue;
 
-    // All lines should have the same count for a good delimiter
     const allSame = counts.every((c) => c === counts[0]);
     const score = allSame ? avg * 2 : avg;
 
     if (score > bestScore) {
       bestScore = score;
-      bestDelimiter = delim;
+      bestDelimiter = candidateStrs[ci]!;
     }
   }
 
