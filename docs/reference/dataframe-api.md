@@ -3,7 +3,7 @@
 Complete reference for the `DataFrame<S>` class. `S` is a generic row-shape type that flows through all transformations for full TypeScript inference.
 
 ```ts
-import { DataFrame } from 'framekit';
+import { DataFrame } from 'framekit-js';
 ```
 
 ---
@@ -204,7 +204,7 @@ Return rows matching the predicate. Accepts either a callback function or an `Ex
 df.filter(row => row.age > 30);
 
 // Expression style
-import { col } from 'framekit';
+import { col } from 'framekit-js';
 df.filter(col('age').gt(30));
 ```
 
@@ -400,7 +400,7 @@ const grouped2 = df.groupBy('city', 'state');
 Apply aggregation expressions to produce a summary DataFrame. Each key is the output column name and the value is an aggregation expression built from `col()`.
 
 ```ts
-import { col } from 'framekit';
+import { col } from 'framekit-js';
 
 df.groupBy('department').agg({
   avgSalary: col('salary').mean(),

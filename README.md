@@ -1,16 +1,16 @@
 # FrameKit
 
-[![CI](https://github.com/gabry-ts/framekit/actions/workflows/ci.yml/badge.svg)](https://github.com/gabry-ts/framekit/actions/workflows/ci.yml)
-[![Bench Smoke](https://github.com/gabry-ts/framekit/actions/workflows/bench-smoke.yml/badge.svg)](https://github.com/gabry-ts/framekit/actions/workflows/bench-smoke.yml)
-[![Bench Nightly](https://github.com/gabry-ts/framekit/actions/workflows/bench-nightly.yml/badge.svg)](https://github.com/gabry-ts/framekit/actions/workflows/bench-nightly.yml)
-![npm](https://img.shields.io/npm/v/framekit)
+[![CI](https://github.com/gabry-ts/framekit-js/actions/workflows/ci.yml/badge.svg)](https://github.com/gabry-ts/framekit-js/actions/workflows/ci.yml)
+[![Bench Smoke](https://github.com/gabry-ts/framekit-js/actions/workflows/bench-smoke.yml/badge.svg)](https://github.com/gabry-ts/framekit-js/actions/workflows/bench-smoke.yml)
+[![Bench Nightly](https://github.com/gabry-ts/framekit-js/actions/workflows/bench-nightly.yml/badge.svg)](https://github.com/gabry-ts/framekit-js/actions/workflows/bench-nightly.yml)
+![npm](https://img.shields.io/npm/v/framekit-js)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 ![TypeScript](https://img.shields.io/badge/TypeScript-first-blue?logo=typescript&logoColor=white)
 ![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen?logo=node.js&logoColor=white)
-[![GitHub stars](https://img.shields.io/github/stars/gabry-ts/framekit?style=social)](https://github.com/gabry-ts/framekit/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/gabry-ts/framekit?style=social)](https://github.com/gabry-ts/framekit/network/members)
-[![GitHub issues](https://img.shields.io/github/issues/gabry-ts/framekit)](https://github.com/gabry-ts/framekit/issues)
-[![GitHub last commit](https://img.shields.io/github/last-commit/gabry-ts/framekit)](https://github.com/gabry-ts/framekit/commits/main)
+[![GitHub stars](https://img.shields.io/github/stars/gabry-ts/framekit-js?style=social)](https://github.com/gabry-ts/framekit-js/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/gabry-ts/framekit-js?style=social)](https://github.com/gabry-ts/framekit-js/network/members)
+[![GitHub issues](https://img.shields.io/github/issues/gabry-ts/framekit-js)](https://github.com/gabry-ts/framekit-js/issues)
+[![GitHub last commit](https://img.shields.io/github/last-commit/gabry-ts/framekit-js)](https://github.com/gabry-ts/framekit-js/commits/main)
 
 > DataFrames for TypeScript that don't make you wish you were using Python.
 >
@@ -36,7 +36,7 @@
 - Strong TypeScript ergonomics for both row-level and expression-level transformations.
 - Shared semantics across eager and lazy execution.
 - Practical data engineering surface: joins, reshape, aggregations, window ops, and streaming formats.
-- Compatibility layer (`framekit/compat`) to ease migration from Arquero-style pipelines.
+- Compatibility layer (`framekit-js/compat`) to ease migration from Arquero-style pipelines.
 
 ## Feature Overview
 
@@ -53,13 +53,13 @@
 ## Install
 
 ```bash
-npm install framekit
+npm install framekit-js
 ```
 
 ## 60-Second Example
 
 ```ts
-import { DataFrame, col, op } from 'framekit';
+import { DataFrame, col, op } from 'framekit-js';
 
 const sales = DataFrame.fromRows([
   { region: 'EU', product: 'A', qty: 2, price: 10 },
@@ -103,7 +103,7 @@ Expected output:
 ## Eager and Lazy APIs
 
 ```ts
-import { DataFrame, col } from 'framekit';
+import { DataFrame, col } from 'framekit-js';
 
 const source = DataFrame.fromRows([
   { city: 'Rome', temp: 26 },
@@ -130,8 +130,8 @@ const lazy = source.lazy().filter(col<number>('temp').gt(27)).select('city', 'te
 
 ## Core and Compat APIs
 
-- `framekit`: native API (`DataFrame`, expressions, lazy plans, I/O).
-- `framekit/compat`: migration-friendly verbs (`derive`, `rollup`, `fold`, `orderby`) and helpers (`all`, `not`, `range`, `desc`).
+- `framekit-js`: native API (`DataFrame`, expressions, lazy plans, I/O).
+- `framekit-js/compat`: migration-friendly verbs (`derive`, `rollup`, `fold`, `orderby`) and helpers (`all`, `not`, `range`, `desc`).
 
 Start here for migration examples: `docs/guides/migration-arquero.md`.
 

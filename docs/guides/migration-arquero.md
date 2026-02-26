@@ -1,6 +1,6 @@
 # Migrating from Arquero to FrameKit
 
-This guide maps common Arquero APIs to FrameKit core and `framekit/compat` equivalents.
+This guide maps common Arquero APIs to FrameKit core and `framekit-js/compat` equivalents.
 
 ## API Mapping
 

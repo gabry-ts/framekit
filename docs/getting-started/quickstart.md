@@ -3,13 +3,13 @@
 ## Install
 
 ```bash
-npm install framekit
+npm install framekit-js
 ```
 
 ## Create a DataFrame
 
 ```ts
-import { DataFrame, col } from 'framekit';
+import { DataFrame, col } from 'framekit-js';
 
 const df = DataFrame.fromRows([
   { city: 'Rome', temp: 26 },

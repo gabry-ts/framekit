@@ -19,7 +19,7 @@ This approach prevents a common class of bugs where missing data is silently con
 Any arithmetic operation involving a null operand produces null. This is consistent with SQL's three-valued logic and with IEEE semantics for "unknown" values.
 
 ```ts
-import { DataFrame, col } from 'framekit';
+import { DataFrame, col } from 'framekit-js';
 
 const df = DataFrame.fromRows([
   { a: 10, b: 5 },
@@ -68,7 +68,7 @@ The `and`, `or`, and `not` operators follow SQL-style three-valued logic:
 Aggregation functions skip null values by default. This means they compute their result over the non-null values only.
 
 ```ts
-import { DataFrame, col } from 'framekit';
+import { DataFrame, col } from 'framekit-js';
 
 const df = DataFrame.fromRows([
   { group: 'A', value: 10 },
@@ -96,7 +96,7 @@ Note that `count` counts non-null values. If you need the total number of rows r
 The `dropNull()` method removes rows that contain null values. You can target specific columns or apply it to all columns.
 
 ```ts
-import { DataFrame } from 'framekit';
+import { DataFrame } from 'framekit-js';
 
 const df = DataFrame.fromRows([
   { id: 1, name: 'Alice', score: 90 },
@@ -174,7 +174,7 @@ The `impute()` method provides more flexible null replacement. It takes a mappin
 ### Simple imputation with a constant
 
 ```ts
-import { DataFrame } from 'framekit';
+import { DataFrame } from 'framekit-js';
 
 const df = DataFrame.fromRows([
   { id: 1, score: 90 },
@@ -224,7 +224,7 @@ These expression-level functions let you handle nulls inside column derivations 
 Returns the first non-null value from a list of expressions. This is equivalent to SQL's `COALESCE` function.
 
 ```ts
-import { DataFrame, col, lit } from 'framekit';
+import { DataFrame, col, lit } from 'framekit-js';
 
 const df = DataFrame.fromRows([
   { primary: null, backup: 'fallback-A' },

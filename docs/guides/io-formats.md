@@ -24,7 +24,7 @@ CSV is the most common tabular data format. FrameKit includes a built-in RFC 418
 ### Reading CSV
 
 ```ts
-import { DataFrame } from 'framekit';
+import { DataFrame } from 'framekit-js';
 
 // From a file
 const df = await DataFrame.fromCSV('./data.csv');
@@ -193,7 +193,7 @@ npm install apache-arrow
 ### Working with Arrow Tables
 
 ```ts
-import { DataFrame } from 'framekit';
+import { DataFrame } from 'framekit-js';
 
 // Convert a DataFrame to an Arrow Table
 const arrowTable = await df.toArrow();
@@ -231,7 +231,7 @@ npm install xlsx
 ### Reading Excel
 
 ```ts
-import { DataFrame } from 'framekit';
+import { DataFrame } from 'framekit-js';
 
 // Read the first sheet
 const df = await DataFrame.fromExcel('./report.xlsx');
@@ -302,7 +302,7 @@ npm install parquet-wasm
 ### Reading Parquet
 
 ```ts
-import { DataFrame } from 'framekit';
+import { DataFrame } from 'framekit-js';
 
 // Read all columns
 const df = await DataFrame.fromParquet('./data.parquet');
@@ -348,7 +348,7 @@ FrameKit can generate SQL `INSERT` statements from a DataFrame. This is useful f
 Note: This is a write-only format. FrameKit does not read from SQL databases.
 
 ```ts
-import { DataFrame } from 'framekit';
+import { DataFrame } from 'framekit-js';
 
 const df = DataFrame.fromRows([
   { id: 1, name: 'Alice', active: true },
@@ -392,7 +392,7 @@ FrameKit provides an extension mechanism for registering custom file format hand
 ### Registering a custom reader
 
 ```ts
-import { DataFrame } from 'framekit';
+import { DataFrame } from 'framekit-js';
 
 DataFrame.registerReader('msgpack', async (source: Buffer) => {
   const { unpack } = await import('msgpackr');

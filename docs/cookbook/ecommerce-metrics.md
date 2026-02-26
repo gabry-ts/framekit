@@ -14,7 +14,7 @@ dataset using `DataFrame.fromRows`. Each row represents a single order line with
 date, product SKU, customer ID, quantity, and unit price.
 
 ```ts
-import { DataFrame, col, lit, when } from 'framekit';
+import { DataFrame, col, lit, when } from 'framekit-js';
 
 const orders = DataFrame.fromRows([
   { date: '2026-01-05', product: 'Widget A', customer: 'c001', qty: 2, price: 15.00 },

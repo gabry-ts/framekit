@@ -67,7 +67,7 @@ Initial public release.
 
 ### Compatibility Layer
 
-- `framekit/compat` entrypoint for Arquero-style migration.
+- `framekit-js/compat` entrypoint for Arquero-style migration.
 - Verbs: `derive`, `rollup`, `fold`, `orderby`.
 - Helpers: `all`, `not`, `range`, `desc`.
 - Row-level aggregation helpers: `op.sum`, `op.mean`, `op.count`, `op.min`, `op.max`, `op.distinct`, `op.first`, `op.last`.
@@ -78,7 +78,7 @@ Initial public release.
 
 ### Browser Support
 
-- `framekit/browser` entrypoint with I/O excluded for smaller bundles.
+- `framekit-js/browser` entrypoint with I/O excluded for smaller bundles.
 
 ### Error Handling
 

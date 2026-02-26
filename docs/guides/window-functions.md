@@ -50,7 +50,7 @@ Returns `(rank - 1) / (n - 1)`, where `n` is the total number of rows. The resul
 Distributes rows into `n` roughly equal buckets, numbered 1 through `n`.
 
 ```ts
-import { DataFrame, col } from 'framekit';
+import { DataFrame, col } from 'framekit-js';
 
 const df = DataFrame.fromRows([
   { name: 'Alice', salary: 120000 },
@@ -96,7 +96,7 @@ Running product, starting at 1.
 Running count of non-null values.
 
 ```ts
-import { DataFrame, col } from 'framekit';
+import { DataFrame, col } from 'framekit-js';
 
 const df = DataFrame.fromRows([
   { month: 'Jan', revenue: 1000 },
@@ -133,7 +133,7 @@ Computes the difference between the current value and the value `n` rows back. D
 Computes the percentage change from `n` rows back: `(current - previous) / previous`. Default offset is 1. Returns `null` when the previous value is null or zero.
 
 ```ts
-import { DataFrame, col } from 'framekit';
+import { DataFrame, col } from 'framekit-js';
 
 const df = DataFrame.fromRows([
   { date: '2024-01-01', price: 100 },
@@ -174,7 +174,7 @@ Moving sample standard deviation (ddof=1, matching pandas behavior). Requires at
 Moving minimum and maximum over the last `n` rows.
 
 ```ts
-import { DataFrame, col } from 'framekit';
+import { DataFrame, col } from 'framekit-js';
 
 const df = DataFrame.fromRows([
   { day: 1, temp: 22 },
@@ -209,7 +209,7 @@ Computes an exponentially weighted moving average with smoothing factor `alpha` 
 The formula is: `EWMA_t = alpha * value_t + (1 - alpha) * EWMA_{t-1}`. The first non-null value initializes the EWMA. Null values are skipped (the EWMA carries forward unchanged).
 
 ```ts
-import { DataFrame, col } from 'framekit';
+import { DataFrame, col } from 'framekit-js';
 
 const df = DataFrame.fromRows([
   { day: 1, signal: 10 },
@@ -233,7 +233,7 @@ const smoothed = df.withColumn('ewma', col('signal').ewm(0.3));
 The `.over(...columns)` modifier partitions the data by one or more columns before applying the window function. Each partition is processed independently, as if it were a separate DataFrame.
 
 ```ts
-import { DataFrame, col } from 'framekit';
+import { DataFrame, col } from 'framekit-js';
 
 const df = DataFrame.fromRows([
   { dept: 'eng',   name: 'Alice', salary: 120000 },
@@ -268,7 +268,7 @@ The `.orderBy(column, direction?)` modifier sorts the data before applying the w
 The `direction` parameter accepts `'asc'` (default) or `'desc'`.
 
 ```ts
-import { DataFrame, col } from 'framekit';
+import { DataFrame, col } from 'framekit-js';
 
 const df = DataFrame.fromRows([
   { dept: 'eng', name: 'Alice', hire_date: '2020-01-15' },
@@ -289,7 +289,7 @@ const withSeniority = df.withColumn(
 When both modifiers are used, the data is first partitioned by `over()`, then each partition is sorted by `orderBy()`.
 
 ```ts
-import { DataFrame, col } from 'framekit';
+import { DataFrame, col } from 'framekit-js';
 
 const df = DataFrame.fromRows([
   { dept: 'eng',   quarter: 'Q1', revenue: 100 },
@@ -314,7 +314,7 @@ const withYTD = df.withColumn(
 This example demonstrates combining multiple window functions to build a comprehensive analytics view.
 
 ```ts
-import { DataFrame, col } from 'framekit';
+import { DataFrame, col } from 'framekit-js';
 
 const sales = DataFrame.fromRows([
   { store: 'NYC', date: '2024-01-01', amount: 500 },

@@ -3,7 +3,7 @@
 Expressions are composable, type-safe building blocks used in `filter`, `withColumn`, `groupBy().agg()`, and other DataFrame operations. They describe computations without executing them immediately, enabling optimization and type inference.
 
 ```ts
-import { col, lit, when } from 'framekit';
+import { col, lit, when } from 'framekit-js';
 ```
 
 ---
@@ -256,7 +256,7 @@ Most frequent value in the group.
 Pearson correlation coefficient between two columns across the group.
 
 ```ts
-import { col, op } from 'framekit';
+import { col, op } from 'framekit-js';
 
 df.groupBy('department').agg({
   totalSalary: col('salary').sum(),

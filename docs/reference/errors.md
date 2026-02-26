@@ -11,7 +11,7 @@ import {
   ParseError,
   IOError,
   ErrorCode,
-} from 'framekit';
+} from 'framekit-js';
 ```
 
 ---
@@ -161,7 +161,7 @@ Thrown when a file system or network operation fails. This includes missing file
 ### Basic try/catch
 
 ```ts
-import { DataFrame, ColumnNotFoundError } from 'framekit';
+import { DataFrame, ColumnNotFoundError } from 'framekit-js';
 
 try {
   df.select('nonexistent');
@@ -178,7 +178,7 @@ try {
 When you need to handle errors generically without importing every subclass, check the `code` property:
 
 ```ts
-import { DataFrame, FrameKitError, ErrorCode } from 'framekit';
+import { DataFrame, FrameKitError, ErrorCode } from 'framekit-js';
 
 try {
   const result = DataFrame.fromCSV(rawData);
@@ -207,7 +207,7 @@ try {
 ### Guarding I/O operations
 
 ```ts
-import { DataFrame, IOError, ParseError } from 'framekit';
+import { DataFrame, IOError, ParseError } from 'framekit-js';
 
 async function loadData(path: string) {
   try {

@@ -1,5 +1,5 @@
 {
-  "name": "framekit",
+  "name": "framekit-js",
   "version": "0.1.0",
   "description": "The TypeScript-first DataFrame library for Node.js",
   "type": "module",
@@ -35,7 +35,7 @@
     }
   },
   "bin": {
-    "framekit": "./dist/cli.js"
+    "framekit-js": "./dist/cli.js"
   },
   "files": [
     "dist"
@@ -114,11 +114,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/gabry-ts/framekit.git"
+    "url": "https://github.com/gabry-ts/framekit-js.git"
   },
-  "homepage": "https://github.com/gabry-ts/framekit",
+  "homepage": "https://github.com/gabry-ts/framekit-js",
   "bugs": {
-    "url": "https://github.com/gabry-ts/framekit/issues"
+    "url": "https://github.com/gabry-ts/framekit-js/issues"
   },
   "author": "Gabriele Partiti",
   "license": "MIT"

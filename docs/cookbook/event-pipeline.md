@@ -14,7 +14,7 @@ type, a Unix-epoch timestamp (in milliseconds), a page path, and an optional
 array of tags for categorization.
 
 ```ts
-import { DataFrame, col, lit } from 'framekit';
+import { DataFrame, col, lit } from 'framekit-js';
 
 const events = DataFrame.fromRows([
   { user: 'u1', event: 'page_view',   ts: 1706100000000, page: '/',          tags: ['organic', 'mobile'] },

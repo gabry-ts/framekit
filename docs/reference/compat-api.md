@@ -3,7 +3,7 @@
 The compat layer provides an Arquero-style verb interface for users familiar with tidyverse or Arquero patterns. All functions are stateless and return new DataFrames.
 
 ```ts
-import { derive, rollup, fold, orderby, op, all, not, range, desc } from 'framekit/compat';
+import { derive, rollup, fold, orderby, op, all, not, range, desc } from 'framekit-js/compat';
 ```
 
 ---
@@ -248,8 +248,8 @@ rollup(df, { latest: (d) => op.last(d.date) });
 A complete pipeline using compat verbs alongside standard DataFrame methods:
 
 ```ts
-import { DataFrame } from 'framekit';
-import { derive, rollup, orderby, op, desc } from 'framekit/compat';
+import { DataFrame } from 'framekit-js';
+import { derive, rollup, orderby, op, desc } from 'framekit-js/compat';
 
 const sales = DataFrame.fromRows([
   { store: 'A', product: 'X', price: 10, qty: 5 },

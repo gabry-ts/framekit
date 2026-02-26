@@ -7,7 +7,7 @@ FrameKit supports two execution models: **eager** and **lazy**. Understanding wh
 In eager mode, every operation materializes its result immediately. When you call `.filter()`, `.select()`, or `.sortBy()`, the engine executes the transformation on the spot and returns a new `DataFrame` containing the result.
 
 ```ts
-import { DataFrame, col } from 'framekit';
+import { DataFrame, col } from 'framekit-js';
 
 const df = DataFrame.fromRows([
   { name: 'Alice', age: 30, dept: 'eng' },
@@ -35,7 +35,7 @@ Eager execution is straightforward: you see the result at every step, which make
 Lazy mode defers all computation. Instead of executing operations immediately, FrameKit builds an internal **query plan** -- a tree of logical nodes that describes _what_ to compute, not _how_ or _when_. The plan is only executed when you explicitly call `.collect()` or `.sink()`.
 
 ```ts
-import { DataFrame, col } from 'framekit';
+import { DataFrame, col } from 'framekit-js';
 
 const df = DataFrame.fromRows([
   { name: 'Alice', age: 30, dept: 'eng' },
@@ -114,7 +114,7 @@ const plan = df
 The `explain()` method returns a string representation of both the original and optimized plans. This is invaluable for understanding what the optimizer is doing and for debugging performance issues.
 
 ```ts
-import { DataFrame, col } from 'framekit';
+import { DataFrame, col } from 'framekit-js';
 
 const df = DataFrame.fromRows([
   { name: 'Alice', age: 30, dept: 'eng' },

@@ -14,7 +14,7 @@ with a timestamp, log level, service name, response latency in milliseconds,
 and HTTP status code.
 
 ```ts
-import { DataFrame, col, lit, when } from 'framekit';
+import { DataFrame, col, lit, when } from 'framekit-js';
 
 const logs = DataFrame.fromRows([
   { timestamp: '2026-01-15T10:00:12', level: 'INFO',  service: 'api',     latency_ms: 45,   status: 200 },
