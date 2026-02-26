@@ -13,6 +13,12 @@
 >
 > FrameKit is a TypeScript-first DataFrame engine for Node.js. Strong types, predictable null semantics, lazy and eager execution, and production-grade I/O — without the "just use pandas" compromise.
 
+## Try it in the browser
+
+**[framekit-js Playground →](https://gabry-ts.github.io/framekit-js/)**
+
+Write TypeScript directly in the browser — no install, no setup. Monaco editor with FrameKit types, live execution via esbuild-wasm, and a table view of results.
+
 ## Table of Contents
 
 - [Why FrameKit](#why-framekit)
@@ -141,15 +147,15 @@ Start here for migration examples: `docs/guides/migration-arquero.md`.
 
 ## Comparison
 
-|                    | FrameKit | Arquero | Danfo.js | Polars (Node) |
-| ------------------ | -------- | ------- | -------- | ------------- |
-| TypeScript-first   | Yes      | No      | Partial  | No (Rust FFI) |
-| Lazy execution     | Yes      | No      | No       | Yes           |
-| Expression API     | Yes      | No      | No       | Yes           |
-| Null semantics     | Explicit | Implicit| Implicit | Explicit      |
-| I/O formats        | 7        | 2       | 4        | 6             |
-| Browser support    | Yes      | Yes     | Yes      | No            |
-| Zero native deps   | Yes      | Yes     | No       | No            |
+|                  | FrameKit | Arquero  | Danfo.js | Polars (Node) |
+| ---------------- | -------- | -------- | -------- | ------------- |
+| TypeScript-first | Yes      | No       | Partial  | No (Rust FFI) |
+| Lazy execution   | Yes      | No       | No       | Yes           |
+| Expression API   | Yes      | No       | No       | Yes           |
+| Null semantics   | Explicit | Implicit | Implicit | Explicit      |
+| I/O formats      | 7        | 2        | 4        | 6             |
+| Browser support  | Yes      | Yes      | Yes      | No            |
+| Zero native deps | Yes      | Yes      | No       | No            |
 
 ## Benchmarks and Quality
 
