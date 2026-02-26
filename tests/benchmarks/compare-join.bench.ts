@@ -18,7 +18,7 @@ describe('benchmark compare join', () => {
     const framekit = await runCase(
       'framekit-join',
       () => {
-        left.join(right, 'id', 'left');
+        return left.join(right, 'id', 'left');
       },
       warmup,
       iterations,
@@ -34,7 +34,7 @@ describe('benchmark compare join', () => {
       arquero = await runCase(
         'arquero-join',
         () => {
-          leftTable.join_left(rightTable, 'id');
+          return leftTable.join_left(rightTable, 'id');
         },
         warmup,
         iterations,

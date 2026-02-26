@@ -1,6 +1,24 @@
 import { DType } from './types/dtype';
-import type { CSVReadOptions, CSVWriteOptions, JSONReadOptions, JSONWriteOptions, PrintOptions, SampleOptions, ExcelReadOptions, ExcelWriteOptions, ParquetReadOptions, ParquetWriteOptions, SQLWriteOptions } from './types/options';
-import { ColumnNotFoundError, ErrorCode, FrameKitError, IOError, ShapeMismatchError } from './errors';
+import type {
+  CSVReadOptions,
+  CSVWriteOptions,
+  JSONReadOptions,
+  JSONWriteOptions,
+  PrintOptions,
+  SampleOptions,
+  ExcelReadOptions,
+  ExcelWriteOptions,
+  ParquetReadOptions,
+  ParquetWriteOptions,
+  SQLWriteOptions,
+} from './types/options';
+import {
+  ColumnNotFoundError,
+  ErrorCode,
+  FrameKitError,
+  IOError,
+  ShapeMismatchError,
+} from './errors';
 import { Column } from './storage/column';
 import { Float64Column, Int32Column } from './storage/numeric';
 import { Utf8Column } from './storage/string';
@@ -9,7 +27,7 @@ import { DateColumn } from './storage/date';
 import { ObjectColumn } from './storage/object';
 import { BitArray } from './storage/bitarray';
 import { Series, _registerDataFrameFactory } from './series';
-import { Expr, col } from './expr/expr';
+import { Expr, col, ComparisonExpr, ColumnExpr, LiteralExpr } from './expr/expr';
 import { parseCSV } from './io/csv/parser';
 import { writeCSV } from './io/csv/writer';
 import { streamCSVFile } from './engine/streaming/scanner';
@@ -273,10 +291,16 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
     const { before, after } = options;
 
     if (before !== undefined && after !== undefined) {
-      throw new FrameKitError(ErrorCode.INVALID_OPERATION, 'Cannot specify both "before" and "after" in relocate');
+      throw new FrameKitError(
+        ErrorCode.INVALID_OPERATION,
+        'Cannot specify both "before" and "after" in relocate',
+      );
     }
     if (before === undefined && after === undefined) {
-      throw new FrameKitError(ErrorCode.INVALID_OPERATION, 'Must specify either "before" or "after" in relocate');
+      throw new FrameKitError(
+        ErrorCode.INVALID_OPERATION,
+        'Must specify either "before" or "after" in relocate',
+      );
     }
 
     // Validate source columns exist
@@ -293,15 +317,11 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
     }
 
     // Build new order: remove source columns, then insert at anchor position
-    const remaining = this._columnOrder.filter(c => !columns.includes(c));
+    const remaining = this._columnOrder.filter((c) => !columns.includes(c));
     const anchorIdx = remaining.indexOf(anchor);
     const insertIdx = before !== undefined ? anchorIdx : anchorIdx + 1;
 
-    const newOrder = [
-      ...remaining.slice(0, insertIdx),
-      ...columns,
-      ...remaining.slice(insertIdx),
-    ];
+    const newOrder = [...remaining.slice(0, insertIdx), ...columns, ...remaining.slice(insertIdx)];
 
     return new DataFrame(new Map(this._columns), newOrder);
   }
@@ -328,6 +348,53 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
 
   filter(predicateOrExpr: ((row: S) => boolean) | Expr<boolean>): DataFrame<S> {
     if (predicateOrExpr instanceof Expr) {
+      const maybeCmp = predicateOrExpr as unknown as ComparisonExpr<unknown>;
+      const cmpAny = maybeCmp as unknown as {
+        _left?: Expr<unknown>;
+        _right?: Expr<unknown>;
+        _op?: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte';
+      };
+
+      if (
+        cmpAny._op !== undefined &&
+        cmpAny._left instanceof ColumnExpr &&
+        cmpAny._right instanceof LiteralExpr
+      ) {
+        const columnName = cmpAny._left.dependencies[0]!;
+        const literal = (cmpAny._right as unknown as { _value: unknown })._value;
+        const source = this._columns.get(columnName);
+        if (source) {
+          const indices: number[] = [];
+          for (let i = 0; i < this.length; i++) {
+            const v = source.get(i);
+            if (v === null || literal === null) continue;
+            let keep = false;
+            switch (cmpAny._op) {
+              case 'eq':
+                keep = v === literal;
+                break;
+              case 'neq':
+                keep = v !== literal;
+                break;
+              case 'gt':
+                keep = (v as number) > (literal as number);
+                break;
+              case 'gte':
+                keep = (v as number) >= (literal as number);
+                break;
+              case 'lt':
+                keep = (v as number) < (literal as number);
+                break;
+              case 'lte':
+                keep = (v as number) <= (literal as number);
+                break;
+            }
+            if (keep) indices.push(i);
+          }
+          return this._takeByIndices(indices);
+        }
+      }
+
       const boolSeries = predicateOrExpr.evaluate(this as DataFrame);
       const indices: number[] = [];
       for (let i = 0; i < this.length; i++) {
@@ -365,21 +432,30 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
     let expr: Expr<boolean>;
 
     switch (op) {
-      case '=': expr = colExpr.eq(litValue); break;
-      case '!=': expr = colExpr.neq(litValue); break;
-      case '>': expr = colExpr.gt(litValue as never); break;
-      case '>=': expr = colExpr.gte(litValue as never); break;
-      case '<': expr = colExpr.lt(litValue as never); break;
-      case '<=': expr = colExpr.lte(litValue as never); break;
+      case '=':
+        expr = colExpr.eq(litValue);
+        break;
+      case '!=':
+        expr = colExpr.neq(litValue);
+        break;
+      case '>':
+        expr = colExpr.gt(litValue as never);
+        break;
+      case '>=':
+        expr = colExpr.gte(litValue as never);
+        break;
+      case '<':
+        expr = colExpr.lt(litValue as never);
+        break;
+      case '<=':
+        expr = colExpr.lte(litValue as never);
+        break;
     }
 
     return this.filter(expr);
   }
 
-  sortBy(
-    columns: string | string[],
-    order?: 'asc' | 'desc' | ('asc' | 'desc')[],
-  ): DataFrame<S> {
+  sortBy(columns: string | string[], order?: 'asc' | 'desc' | ('asc' | 'desc')[]): DataFrame<S> {
     const cols = Array.isArray(columns) ? columns : [columns];
     const orders = Array.isArray(order) ? order : cols.map(() => order ?? 'asc');
 
@@ -389,17 +465,55 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
       }
     }
 
-    // Build arrays of raw values for each sort column (avoids repeated row() calls)
+    // Fast path: single-column sort for primitive/date values
+    if (cols.length === 1) {
+      const sortCol = this._columns.get(cols[0]!)!;
+      const vals: unknown[] = new Array(this.length);
+      for (let i = 0; i < this.length; i++) vals[i] = sortCol.get(i);
+      const desc = orders[0] === 'desc';
+
+      const indices = Array.from({ length: this.length }, (_, i) => i);
+      indices.sort((a, b) => {
+        const va = vals[a]!;
+        const vb = vals[b]!;
+        const aIsNull = va === null || va === undefined;
+        const bIsNull = vb === null || vb === undefined;
+        if (aIsNull && bIsNull) return 0;
+        if (aIsNull) return 1;
+        if (bIsNull) return -1;
+
+        let cmp = 0;
+        if (typeof va === 'number' && typeof vb === 'number') {
+          cmp = va - vb;
+        } else if (typeof va === 'string' && typeof vb === 'string') {
+          cmp = va < vb ? -1 : va > vb ? 1 : 0;
+        } else if (typeof va === 'boolean' && typeof vb === 'boolean') {
+          cmp = (va ? 1 : 0) - (vb ? 1 : 0);
+        } else if (va instanceof Date && vb instanceof Date) {
+          cmp = va.getTime() - vb.getTime();
+        }
+        return desc ? -cmp : cmp;
+      });
+
+      const int32Indices = new Int32Array(indices);
+      const newColumns = new Map<string, Column<unknown>>();
+      for (const name of this._columnOrder) {
+        newColumns.set(name, this._columns.get(name)!.take(int32Indices));
+      }
+      return new DataFrame<S>(newColumns, [...this._columnOrder]);
+    }
+
+    // Build arrays of raw values for each sort column (avoids repeated get calls)
     const sortValues: unknown[][] = cols.map((name) => {
       const col = this._columns.get(name)!;
-      const vals: unknown[] = [];
+      const vals: unknown[] = new Array(this.length);
       for (let i = 0; i < this.length; i++) {
-        vals.push(col.get(i));
+        vals[i] = col.get(i);
       }
       return vals;
     });
 
-    // Create index array and sort it (stable sort in V8/modern JS engines)
+    // Create index array and sort it
     const indices = Array.from({ length: this.length }, (_, i) => i);
     indices.sort((a, b) => {
       for (let c = 0; c < cols.length; c++) {
@@ -439,9 +553,8 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
   }
 
   unique(columns?: string | string[], keep: 'first' | 'last' = 'first'): DataFrame<S> {
-    const cols = columns === undefined
-      ? this._columnOrder
-      : Array.isArray(columns) ? columns : [columns];
+    const cols =
+      columns === undefined ? this._columnOrder : Array.isArray(columns) ? columns : [columns];
 
     for (const name of cols) {
       if (!this._columns.has(name)) {
@@ -614,9 +727,8 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
   }
 
   dropNull(columns?: string | string[]): DataFrame<S> {
-    const cols = columns === undefined
-      ? this._columnOrder
-      : Array.isArray(columns) ? columns : [columns];
+    const cols =
+      columns === undefined ? this._columnOrder : Array.isArray(columns) ? columns : [columns];
 
     for (const name of cols) {
       if (!this._columns.has(name)) {
@@ -811,7 +923,8 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
     const lines: string[] = [];
 
     // Header
-    const headerLine = '│ ' + headerRow.map((h, ci) => pad(h, colWidths[ci]!, ci)).join(' │ ') + ' │';
+    const headerLine =
+      '│ ' + headerRow.map((h, ci) => pad(h, colWidths[ci]!, ci)).join(' │ ') + ' │';
     const topBorder = '┌─' + colWidths.map((w) => sep.repeat(w)).join('─┬─') + '─┐';
     const headerSep = '├─' + colWidths.map((w) => sep.repeat(w)).join('─┼─') + '─┤';
     const bottomBorder = '└─' + colWidths.map((w) => sep.repeat(w)).join('─┴─') + '─┘';
@@ -971,7 +1084,10 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
       throw new FrameKitError(ErrorCode.INVALID_OPERATION, 'step must not be zero');
     }
     if (start >= end) {
-      throw new FrameKitError(ErrorCode.INVALID_OPERATION, `start (${start}) must be less than end (${end})`);
+      throw new FrameKitError(
+        ErrorCode.INVALID_OPERATION,
+        `start (${start}) must be less than end (${end})`,
+      );
     }
     const length = Math.ceil((end - start) / step);
     const data = new Float64Array(length);
@@ -1032,7 +1148,9 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
       try {
         const response = await fetch(input);
         if (!response.ok) {
-          throw new IOError(`Failed to fetch CSV from '${input}': HTTP ${String(response.status)} ${response.statusText}`);
+          throw new IOError(
+            `Failed to fetch CSV from '${input}': HTTP ${String(response.status)} ${response.statusText}`,
+          );
         }
         content = await response.text();
       } catch (err) {
@@ -1132,7 +1250,12 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
     if (typeof filePathOrOptions === 'string') {
       filePath = filePathOrOptions;
       options = maybeOptions ?? {};
-    } else if (filePathOrOptions != null && typeof filePathOrOptions === 'object' && 'write' in filePathOrOptions && typeof filePathOrOptions.write === 'function') {
+    } else if (
+      filePathOrOptions != null &&
+      typeof filePathOrOptions === 'object' &&
+      'write' in filePathOrOptions &&
+      typeof filePathOrOptions.write === 'function'
+    ) {
       // Node.js Writable stream
       writable = filePathOrOptions;
       options = maybeOptions ?? {};
@@ -1605,6 +1728,4 @@ function formatBytes(bytes: number): string {
 }
 
 // Register DataFrame factory for Series.valueCounts() to avoid circular dependency
-_registerDataFrameFactory(
-  (columns, columnOrder) => new DataFrame(columns, columnOrder),
-);
+_registerDataFrameFactory((columns, columnOrder) => new DataFrame(columns, columnOrder));

@@ -6,10 +6,7 @@ import { Utf8Column } from '../storage/string';
 import { BooleanColumn } from '../storage/boolean';
 import { DateColumn } from '../storage/date';
 import { ColumnNotFoundError } from '../errors';
-import {
-  AggExpr,
-  col,
-} from '../expr/expr';
+import { AggExpr, col } from '../expr/expr';
 import type { ParallelAggOptions, AggSpec } from '../engine/parallelism/types';
 import { shouldUseParallel, parallelAgg } from '../engine/parallelism/parallel-agg';
 
@@ -417,6 +414,16 @@ export class GroupBy<
   }
 
   private _serializeKey(columns: Column<unknown>[], index: number): string {
+    if (columns.length === 1) {
+      const v = columns[0]!.get(index);
+      if (v === null) return '\0null';
+      if (v instanceof Date) return `\0d${v.getTime()}`;
+      if (typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean') {
+        return `\0${typeof v}${String(v)}`;
+      }
+      return `\0obj${JSON.stringify(v)}`;
+    }
+
     const parts: string[] = [];
     for (const column of columns) {
       const v = column.get(index);

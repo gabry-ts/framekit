@@ -13,7 +13,7 @@ describe('benchmark compare sort', () => {
     const framekit = await runCase(
       'framekit-sort',
       () => {
-        df.sortBy(['group', 'amount']);
+        return df.sortBy(['group', 'amount']);
       },
       warmup,
       iterations,
@@ -28,7 +28,7 @@ describe('benchmark compare sort', () => {
       arquero = await runCase(
         'arquero-sort',
         () => {
-          table.orderby('group', 'amount');
+          return table.orderby('group', 'amount');
         },
         warmup,
         iterations,

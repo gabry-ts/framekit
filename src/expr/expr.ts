@@ -136,7 +136,7 @@ export abstract class Expr<T> {
   // ── Null handling ──
 
   coalesce(...others: Array<Expr<T> | T>): Expr<T> {
-    const exprs = others.map(o => (o instanceof Expr ? o : new LiteralExpr<T>(o)));
+    const exprs = others.map((o) => (o instanceof Expr ? o : new LiteralExpr<T>(o)));
     return new CoalesceExpr<T>([this, ...exprs]);
   }
 
@@ -269,7 +269,12 @@ export class ColumnExpr<T> extends Expr<T> {
 type ArithOp = 'add' | 'sub' | 'mul' | 'div' | 'mod' | 'pow';
 
 const ARITH_OP_SYMBOLS: Record<ArithOp, string> = {
-  add: '+', sub: '-', mul: '*', div: '/', mod: '%', pow: '**',
+  add: '+',
+  sub: '-',
+  mul: '*',
+  div: '/',
+  mod: '%',
+  pow: '**',
 };
 
 class ArithmeticExpr extends Expr<number> {
@@ -314,12 +319,18 @@ class ArithmeticExpr extends Expr<number> {
 
 function applyArithOp(a: number, b: number, op: ArithOp): number {
   switch (op) {
-    case 'add': return a + b;
-    case 'sub': return a - b;
-    case 'mul': return a * b;
-    case 'div': return a / b;
-    case 'mod': return a % b;
-    case 'pow': return Math.pow(a, b);
+    case 'add':
+      return a + b;
+    case 'sub':
+      return a - b;
+    case 'mul':
+      return a * b;
+    case 'div':
+      return a / b;
+    case 'mod':
+      return a % b;
+    case 'pow':
+      return Math.pow(a, b);
   }
 }
 
@@ -328,10 +339,15 @@ function applyArithOp(a: number, b: number, op: ArithOp): number {
 type CmpOp = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte';
 
 const CMP_OP_SYMBOLS: Record<CmpOp, string> = {
-  eq: '==', neq: '!=', gt: '>', gte: '>=', lt: '<', lte: '<=',
+  eq: '==',
+  neq: '!=',
+  gt: '>',
+  gte: '>=',
+  lt: '<',
+  lte: '<=',
 };
 
-class ComparisonExpr<T> extends Expr<boolean> {
+export class ComparisonExpr<T> extends Expr<boolean> {
   private readonly _left: Expr<T>;
   private readonly _right: Expr<T>;
   private readonly _op: CmpOp;
@@ -352,18 +368,52 @@ class ComparisonExpr<T> extends Expr<boolean> {
   }
 
   evaluate(df: DataFrame): Series<boolean> {
+    if (this._left instanceof ColumnExpr && this._right instanceof LiteralExpr) {
+      const columnName = (this._left as ColumnExpr<T>).dependencies[0]!;
+      const literal = (this._right as unknown as { _value: T })._value;
+      const source = df.col(columnName).column;
+      const len = source.length;
+      const results = new Array<boolean | null>(len);
+      for (let i = 0; i < len; i++) {
+        const a = source.get(i);
+        if (a === null || literal === null) {
+          results[i] = null;
+        } else {
+          results[i] = applyCmpOp(a as T, literal, this._op);
+        }
+      }
+      return new Series<boolean>('', BooleanColumn.from(results));
+    }
+
+    if (this._left instanceof LiteralExpr && this._right instanceof ColumnExpr) {
+      const literal = (this._left as unknown as { _value: T })._value;
+      const columnName = (this._right as ColumnExpr<T>).dependencies[0]!;
+      const source = df.col(columnName).column;
+      const len = source.length;
+      const results = new Array<boolean | null>(len);
+      for (let i = 0; i < len; i++) {
+        const b = source.get(i);
+        if (literal === null || b === null) {
+          results[i] = null;
+        } else {
+          results[i] = applyCmpOp(literal, b as T, this._op);
+        }
+      }
+      return new Series<boolean>('', BooleanColumn.from(results));
+    }
+
     const leftSeries = this._left.evaluate(df);
     const rightSeries = this._right.evaluate(df);
     const len = leftSeries.length;
-    const results: (boolean | null)[] = [];
+    const results = new Array<boolean | null>(len);
 
     for (let i = 0; i < len; i++) {
       const a = leftSeries.get(i);
       const b = rightSeries.get(i);
       if (a === null || b === null) {
-        results.push(null);
+        results[i] = null;
       } else {
-        results.push(applyCmpOp(a, b, this._op));
+        results[i] = applyCmpOp(a, b, this._op);
       }
     }
 
@@ -373,12 +423,18 @@ class ComparisonExpr<T> extends Expr<boolean> {
 
 function applyCmpOp<T>(a: T, b: T, op: CmpOp): boolean {
   switch (op) {
-    case 'eq': return a === b;
-    case 'neq': return a !== b;
-    case 'gt': return (a as number) > (b as number);
-    case 'gte': return (a as number) >= (b as number);
-    case 'lt': return (a as number) < (b as number);
-    case 'lte': return (a as number) <= (b as number);
+    case 'eq':
+      return a === b;
+    case 'neq':
+      return a !== b;
+    case 'gt':
+      return (a as number) > (b as number);
+    case 'gte':
+      return (a as number) >= (b as number);
+    case 'lt':
+      return (a as number) < (b as number);
+    case 'lte':
+      return (a as number) <= (b as number);
   }
 }
 
@@ -701,11 +757,11 @@ export class CoalesceExpr<T> extends Expr<T> {
   }
 
   toString(): string {
-    return `coalesce(${this._exprs.map(e => e.toString()).join(', ')})`;
+    return `coalesce(${this._exprs.map((e) => e.toString()).join(', ')})`;
   }
 
   evaluate(df: DataFrame): Series<T> {
-    const evaluated = this._exprs.map(e => e.evaluate(df));
+    const evaluated = this._exprs.map((e) => e.evaluate(df));
     const len = evaluated[0]!.length;
     const results: (T | null)[] = [];
 

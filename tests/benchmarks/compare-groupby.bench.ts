@@ -18,7 +18,7 @@ describe('benchmark compare groupby', () => {
     const framekit = await runCase(
       'framekit-groupby',
       () => {
-        df.groupBy('group').agg({ total: col('amount').sum() });
+        return df.groupBy('group').agg({ total: col('amount').sum() });
       },
       warmup,
       iterations,
@@ -35,7 +35,7 @@ describe('benchmark compare groupby', () => {
       arquero = await runCase(
         'arquero-groupby',
         () => {
-          table.groupby('group').rollup({
+          return table.groupby('group').rollup({
             total: (d: Record<string, unknown>) => op.sum(d.amount as unknown),
           });
         },

@@ -23,18 +23,68 @@ function percentile(sorted: number[], p: number): number {
 
 export async function runCase(
   name: string,
-  fn: () => void | Promise<void>,
+  fn: () => unknown | Promise<unknown>,
   warmup = 2,
   iterations = 10,
 ): Promise<BenchmarkResult> {
+  const consume = (value: unknown): void => {
+    if (value == null) return;
+
+    if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') {
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      let checksum = 0;
+      for (let i = 0; i < value.length; i++) {
+        checksum += i;
+      }
+      if (checksum < 0) {
+        throw new Error('unreachable');
+      }
+      return;
+    }
+
+    if (typeof value === 'object' && value !== null) {
+      const candidate = value as {
+        toArray?: () => unknown[];
+        objects?: () => Iterable<unknown>;
+      };
+
+      if (typeof candidate.toArray === 'function') {
+        const arr = candidate.toArray();
+        let checksum = 0;
+        for (let i = 0; i < arr.length; i++) {
+          checksum += i;
+        }
+        if (checksum < 0) {
+          throw new Error('unreachable');
+        }
+        return;
+      }
+
+      if (typeof candidate.objects === 'function') {
+        let count = 0;
+        for (const _row of candidate.objects()) {
+          count++;
+        }
+        if (count < 0) {
+          throw new Error('unreachable');
+        }
+      }
+    }
+  };
+
   for (let i = 0; i < warmup; i++) {
-    await fn();
+    const out = await fn();
+    consume(out);
   }
 
   const samplesMs: number[] = [];
   for (let i = 0; i < iterations; i++) {
     const start = process.hrtime.bigint();
-    await fn();
+    const out = await fn();
+    consume(out);
     const end = process.hrtime.bigint();
     samplesMs.push(Number(end - start) / 1_000_000);
   }

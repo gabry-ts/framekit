@@ -13,7 +13,7 @@ describe('benchmark compare reshape', () => {
     const framekit = await runCase(
       'framekit-reshape',
       () => {
-        df.melt({
+        return df.melt({
           idVars: ['id', 'region'],
           valueVars: ['revenue', 'orders'],
           varName: 'metric',
@@ -33,7 +33,7 @@ describe('benchmark compare reshape', () => {
       arquero = await runCase(
         'arquero-reshape',
         () => {
-          table.fold(['revenue', 'orders'], { as: ['metric', 'value'] });
+          return table.fold(['revenue', 'orders'], { as: ['metric', 'value'] });
         },
         warmup,
         iterations,

@@ -29,6 +29,15 @@ function serializeKey(columns: Column<unknown>[], index: number): string | null 
   return parts.join('\x01');
 }
 
+function normalizeSingleKey(value: unknown): unknown | null {
+  if (value === null) return null;
+  if (value instanceof Date) return `\0d${value.getTime()}`;
+  if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') {
+    return value;
+  }
+  return `\0obj${JSON.stringify(value)}`;
+}
+
 function buildColumnFromValues(dtype: DType, values: unknown[]): Column<unknown> {
   switch (dtype) {
     case DType.Float64:
@@ -57,7 +66,10 @@ export interface JoinOptions {
   suffix?: string;
 }
 
-function resolveKeys(on: string | string[] | JoinOnMapping): { leftKeys: string[]; rightKeys: string[] } {
+function resolveKeys(on: string | string[] | JoinOnMapping): {
+  leftKeys: string[];
+  rightKeys: string[];
+} {
   if (typeof on === 'string') {
     return { leftKeys: [on], rightKeys: [on] };
   }
@@ -72,10 +84,11 @@ function resolveKeys(on: string | string[] | JoinOnMapping): { leftKeys: string[
   return { leftKeys, rightKeys };
 }
 
-function crossJoin<
-  L extends Record<string, unknown>,
-  R extends Record<string, unknown>,
->(left: DataFrame<L>, right: DataFrame<R>, suffix: string): DataFrame<Record<string, unknown>> {
+function crossJoin<L extends Record<string, unknown>, R extends Record<string, unknown>>(
+  left: DataFrame<L>,
+  right: DataFrame<R>,
+  suffix: string,
+): DataFrame<Record<string, unknown>> {
   const resultLength = left.length * right.length;
   const resultColumns = new Map<string, Column<unknown>>();
   const columnOrder: string[] = [];
@@ -122,10 +135,7 @@ function crossJoin<
   return new Ctor<Record<string, unknown>>(resultColumns, columnOrder);
 }
 
-function semiAntiJoin<
-  L extends Record<string, unknown>,
-  R extends Record<string, unknown>,
->(
+function semiAntiJoin<L extends Record<string, unknown>, R extends Record<string, unknown>>(
   left: DataFrame<L>,
   right: DataFrame<R>,
   on: string | string[] | JoinOnMapping,
@@ -146,22 +156,40 @@ function semiAntiJoin<
 
   // Build hash set from right side keys
   const rightKeyCols = rightKeys.map((k) => right.col(k).column);
-  const rightKeySet = new Set<string>();
-  for (let i = 0; i < right.length; i++) {
-    const keyStr = serializeKey(rightKeyCols, i);
-    if (keyStr !== null) {
-      rightKeySet.add(keyStr);
+  const leftKeyCols = leftKeys.map((k) => left.col(k).column);
+
+  const rightKeySet = new Set<unknown>();
+  if (rightKeyCols.length === 1) {
+    const rightKeyCol = rightKeyCols[0]!;
+    for (let i = 0; i < right.length; i++) {
+      const key = normalizeSingleKey(rightKeyCol.get(i));
+      if (key !== null) rightKeySet.add(key);
+    }
+  } else {
+    for (let i = 0; i < right.length; i++) {
+      const keyStr = serializeKey(rightKeyCols, i);
+      if (keyStr !== null) rightKeySet.add(keyStr);
     }
   }
 
   // Filter left rows by existence (semi) or non-existence (anti) in right key set
-  const leftKeyCols = leftKeys.map((k) => left.col(k).column);
   const matchedIndices: number[] = [];
-  for (let i = 0; i < left.length; i++) {
-    const keyStr = serializeKey(leftKeyCols, i);
-    const hasMatch = keyStr !== null && rightKeySet.has(keyStr);
-    if (anti ? !hasMatch : hasMatch) {
-      matchedIndices.push(i);
+  if (leftKeyCols.length === 1) {
+    const leftKeyCol = leftKeyCols[0]!;
+    for (let i = 0; i < left.length; i++) {
+      const key = normalizeSingleKey(leftKeyCol.get(i));
+      const hasMatch = key !== null && rightKeySet.has(key);
+      if (anti ? !hasMatch : hasMatch) {
+        matchedIndices.push(i);
+      }
+    }
+  } else {
+    for (let i = 0; i < left.length; i++) {
+      const keyStr = serializeKey(leftKeyCols, i);
+      const hasMatch = keyStr !== null && rightKeySet.has(keyStr);
+      if (anti ? !hasMatch : hasMatch) {
+        matchedIndices.push(i);
+      }
     }
   }
 
@@ -183,10 +211,7 @@ function semiAntiJoin<
   return new Ctor<Record<string, unknown>>(resultColumns, columnOrder);
 }
 
-export function hashJoin<
-  L extends Record<string, unknown>,
-  R extends Record<string, unknown>,
->(
+export function hashJoin<L extends Record<string, unknown>, R extends Record<string, unknown>>(
   left: DataFrame<L>,
   right: DataFrame<R>,
   on: string | string[] | JoinOnMapping,
@@ -222,15 +247,33 @@ export function hashJoin<
 
   // Build hash table on right side
   const rightKeyCols = rightKeys.map((k) => right.col(k).column);
-  const hashTable = new Map<string, number[]>();
-  for (let i = 0; i < right.length; i++) {
-    const keyStr = serializeKey(rightKeyCols, i);
-    if (keyStr === null) continue;
-    const bucket = hashTable.get(keyStr);
-    if (bucket) {
-      bucket.push(i);
-    } else {
-      hashTable.set(keyStr, [i]);
+  const hashTable = new Map<unknown, number | number[]>();
+  if (rightKeyCols.length === 1) {
+    const rightKeyCol = rightKeyCols[0]!;
+    for (let i = 0; i < right.length; i++) {
+      const key = normalizeSingleKey(rightKeyCol.get(i));
+      if (key === null) continue;
+      const bucket = hashTable.get(key);
+      if (bucket === undefined) {
+        hashTable.set(key, i);
+      } else if (typeof bucket === 'number') {
+        hashTable.set(key, [bucket, i]);
+      } else {
+        bucket.push(i);
+      }
+    }
+  } else {
+    for (let i = 0; i < right.length; i++) {
+      const keyStr = serializeKey(rightKeyCols, i);
+      if (keyStr === null) continue;
+      const bucket = hashTable.get(keyStr);
+      if (bucket === undefined) {
+        hashTable.set(keyStr, [i]);
+      } else if (typeof bucket === 'number') {
+        hashTable.set(keyStr, [bucket, i]);
+      } else {
+        bucket.push(i);
+      }
     }
   }
 
@@ -238,37 +281,83 @@ export function hashJoin<
   const leftKeyCols = leftKeys.map((k) => left.col(k).column);
   const leftIndices: number[] = [];
   const rightIndices: (number | null)[] = [];
-  const rightMatched = new Set<number>();
+  const rightMatched = new Uint8Array(right.length);
 
-  for (let i = 0; i < left.length; i++) {
-    const keyStr = serializeKey(leftKeyCols, i);
-    if (keyStr === null) {
-      if (how === 'left' || how === 'outer') {
+  if (leftKeyCols.length === 1) {
+    const leftKeyCol = leftKeyCols[0]!;
+    for (let i = 0; i < left.length; i++) {
+      const key = normalizeSingleKey(leftKeyCol.get(i));
+      if (key === null) {
+        if (how === 'left' || how === 'outer') {
+          leftIndices.push(i);
+          rightIndices.push(null);
+        }
+        continue;
+      }
+
+      const matches = hashTable.get(key);
+      if (matches !== undefined) {
+        if (typeof matches === 'number') {
+          leftIndices.push(i);
+          rightIndices.push(matches);
+          if (how === 'right' || how === 'outer') {
+            rightMatched[matches] = 1;
+          }
+        } else {
+          for (let mi = 0; mi < matches.length; mi++) {
+            const ri = matches[mi]!;
+            leftIndices.push(i);
+            rightIndices.push(ri);
+            if (how === 'right' || how === 'outer') {
+              rightMatched[ri] = 1;
+            }
+          }
+        }
+      } else if (how === 'left' || how === 'outer') {
         leftIndices.push(i);
         rightIndices.push(null);
       }
-      continue;
     }
-
-    const matches = hashTable.get(keyStr);
-    if (matches) {
-      for (const ri of matches) {
-        leftIndices.push(i);
-        rightIndices.push(ri);
-        if (how === 'right' || how === 'outer') {
-          rightMatched.add(ri);
+  } else {
+    for (let i = 0; i < left.length; i++) {
+      const keyStr = serializeKey(leftKeyCols, i);
+      if (keyStr === null) {
+        if (how === 'left' || how === 'outer') {
+          leftIndices.push(i);
+          rightIndices.push(null);
         }
+        continue;
       }
-    } else if (how === 'left' || how === 'outer') {
-      leftIndices.push(i);
-      rightIndices.push(null);
+
+      const matches = hashTable.get(keyStr);
+      if (matches !== undefined) {
+        if (typeof matches === 'number') {
+          leftIndices.push(i);
+          rightIndices.push(matches);
+          if (how === 'right' || how === 'outer') {
+            rightMatched[matches] = 1;
+          }
+        } else {
+          for (let mi = 0; mi < matches.length; mi++) {
+            const ri = matches[mi]!;
+            leftIndices.push(i);
+            rightIndices.push(ri);
+            if (how === 'right' || how === 'outer') {
+              rightMatched[ri] = 1;
+            }
+          }
+        }
+      } else if (how === 'left' || how === 'outer') {
+        leftIndices.push(i);
+        rightIndices.push(null);
+      }
     }
   }
 
   // For right/outer: add unmatched right rows
   if (how === 'right' || how === 'outer') {
     for (let i = 0; i < right.length; i++) {
-      if (!rightMatched.has(i)) {
+      if (rightMatched[i] === 0) {
         leftIndices.push(-1);
         rightIndices.push(i);
       }

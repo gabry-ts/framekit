@@ -112,16 +112,15 @@ export class WindowRowNumberExpr extends WindowRankingExpr {
     const series = this._source.evaluate(df);
     const len = series.length;
 
-    const indexed: { value: unknown; idx: number }[] = [];
-    for (let i = 0; i < len; i++) {
-      indexed.push({ value: series.get(i), idx: i });
-    }
+    const values: unknown[] = new Array(len);
+    for (let i = 0; i < len; i++) values[i] = series.get(i);
 
-    indexed.sort((a, b) => this._sortCompare(a.value, b.value));
+    const indexed = Array.from({ length: len }, (_, i) => i);
+    indexed.sort((a, b) => this._sortCompare(values[a], values[b]));
 
     const ranks = new Array<number | null>(len);
     for (let i = 0; i < indexed.length; i++) {
-      ranks[indexed[i]!.idx] = i + 1;
+      ranks[indexed[i]!] = i + 1;
     }
 
     return new Series<number>('row_number', Float64Column.from(ranks));
@@ -223,8 +222,22 @@ function compareValues(a: unknown, b: unknown): number {
     return a.getTime() - b.getTime();
   }
   // fallback: convert to string with type narrowing
-  const sa = typeof a === 'string' ? a : typeof a === 'number' ? `${a}` : typeof a === 'boolean' ? `${a}` : 'object';
-  const sb = typeof b === 'string' ? b : typeof b === 'number' ? `${b}` : typeof b === 'boolean' ? `${b}` : 'object';
+  const sa =
+    typeof a === 'string'
+      ? a
+      : typeof a === 'number'
+        ? `${a}`
+        : typeof a === 'boolean'
+          ? `${a}`
+          : 'object';
+  const sb =
+    typeof b === 'string'
+      ? b
+      : typeof b === 'number'
+        ? `${b}`
+        : typeof b === 'boolean'
+          ? `${b}`
+          : 'object';
   return sa < sb ? -1 : sa > sb ? 1 : 0;
 }
 
@@ -430,7 +443,12 @@ export class DiffExpr extends OffsetExpr {
       } else {
         const curr = series.get(i);
         const prev = series.get(prevIdx);
-        if (curr !== null && typeof curr === 'number' && prev !== null && typeof prev === 'number') {
+        if (
+          curr !== null &&
+          typeof curr === 'number' &&
+          prev !== null &&
+          typeof prev === 'number'
+        ) {
           results[i] = curr - prev;
         } else {
           results[i] = null;
@@ -461,7 +479,13 @@ export class PctChangeExpr extends OffsetExpr {
       } else {
         const curr = series.get(i);
         const prev = series.get(prevIdx);
-        if (curr !== null && typeof curr === 'number' && prev !== null && typeof prev === 'number' && prev !== 0) {
+        if (
+          curr !== null &&
+          typeof curr === 'number' &&
+          prev !== null &&
+          typeof prev === 'number' &&
+          prev !== 0
+        ) {
           results[i] = (curr - prev) / prev;
         } else {
           results[i] = null;

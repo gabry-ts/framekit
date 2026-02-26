@@ -14,7 +14,7 @@ describe('benchmark compare filter', () => {
     const framekit = await runCase(
       'framekit-filter',
       () => {
-        df.filter(col('amount').gt(5000));
+        return df.filter(col('amount').gt(5000));
       },
       warmup,
       iterations,
@@ -29,7 +29,7 @@ describe('benchmark compare filter', () => {
       arquero = await runCase(
         'arquero-filter',
         () => {
-          table.filter((d) => (d.amount as number) > 5000);
+          return table.filter((d) => (d.amount as number) > 5000);
         },
         warmup,
         iterations,

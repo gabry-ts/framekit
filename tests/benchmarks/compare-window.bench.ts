@@ -18,7 +18,7 @@ describe('benchmark compare window', () => {
     const framekit = await runCase(
       'framekit-window',
       () => {
-        df.withColumn('rn', col('amount').rowNumber());
+        return df.withColumn('rn', col('amount').rowNumber());
       },
       warmup,
       iterations,
@@ -29,11 +29,14 @@ describe('benchmark compare window', () => {
     if (aq) {
       const table = aq.from(rowsData) as {
         derive: (obj: Record<string, unknown>) => unknown;
+        orderby: (...cols: string[]) => {
+          derive: (obj: Record<string, unknown>) => unknown;
+        };
       };
       arquero = await runCase(
         'arquero-window',
         () => {
-          table.derive({ rn: () => op.row_number() });
+          return table.orderby('amount').derive({ rn: () => op.row_number() });
         },
         warmup,
         iterations,
