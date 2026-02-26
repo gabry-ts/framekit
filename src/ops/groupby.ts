@@ -48,7 +48,7 @@ export class GroupBy<
         const n = df.length;
 
         // Use array of arrays indexed by dictionary index
-        const buckets: number[][] = new Array(dictLen);
+        const buckets: number[][] = new Array<number[]>(dictLen);
         for (let d = 0; d < dictLen; d++) {
           buckets[d] = [];
         }

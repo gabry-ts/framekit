@@ -1,6 +1,5 @@
 import type { CSVReadOptions } from '../../types/options';
 import { DType } from '../../types/dtype';
-import { ParseError } from '../../errors';
 
 export interface ParsedColumns {
   header: string[];
@@ -219,7 +218,7 @@ function parseLineFields(
     // Quoted field
     if (ch === CH_QUOTE) {
       pos++; // skip opening quote
-      let fieldStart = pos;
+      const fieldStart = pos;
       let hasEscape = false;
 
       while (pos < len) {
