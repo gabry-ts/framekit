@@ -90,5 +90,36 @@
       "optional": true
     }
   },
+  "keywords": [
+    "dataframe",
+    "data",
+    "analytics",
+    "typescript",
+    "csv",
+    "parquet",
+    "arrow",
+    "excel",
+    "etl",
+    "data-engineering",
+    "data-science",
+    "table",
+    "tabular",
+    "pandas",
+    "polars",
+    "groupby",
+    "join",
+    "pivot",
+    "aggregation",
+    "lazy-evaluation"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gabry-ts/framekit.git"
+  },
+  "homepage": "https://github.com/gabry-ts/framekit",
+  "bugs": {
+    "url": "https://github.com/gabry-ts/framekit/issues"
+  },
+  "author": "Gabriele Partiti",
   "license": "MIT"
 }
