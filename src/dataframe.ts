@@ -49,6 +49,8 @@ import { spread as spreadImpl } from './ops/spread';
 import type { SpreadOptions } from './ops/spread';
 import { unroll as unrollImpl } from './ops/unroll';
 import type { UnrollOptions } from './ops/unroll';
+import { impute as imputeImpl } from './ops/impute';
+import type { ImputeOptions, ImputeValue } from './ops/impute';
 import { pivot } from './ops/pivot';
 import type { PivotOptions } from './ops/pivot';
 import { melt } from './ops/melt';
@@ -275,6 +277,29 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
     return new DataFrame(newColumns, newOrder);
   }
 
+  derive(exprs: Record<string, (row: S) => unknown>): DataFrame {
+    let result: DataFrame = this;
+    for (const [name, fn] of Object.entries(exprs)) {
+      if (this.length === 0) {
+        result = result.withColumn(name, []);
+        continue;
+      }
+
+      const first = fn(this.row(0));
+      if (first instanceof Expr) {
+        result = result.withColumn(name, first.evaluate(this as DataFrame).toArray());
+        continue;
+      }
+
+      const values: unknown[] = [first];
+      for (let i = 1; i < this.length; i++) {
+        values.push(fn(this.row(i)));
+      }
+      result = result.withColumn(name, values);
+    }
+    return result;
+  }
+
   lookup(other: DataFrame, on: string, values?: string[]): DataFrame {
     return lookupImpl(this, other, on, values);
   }
@@ -285,6 +310,10 @@ export class DataFrame<S extends Record<string, unknown> = Record<string, unknow
 
   unroll(columns: string | string[], options?: UnrollOptions): DataFrame {
     return unrollImpl(this, columns, options);
+  }
+
+  impute(values: Record<string, ImputeValue>, options?: ImputeOptions): DataFrame {
+    return imputeImpl(this as DataFrame<Record<string, unknown>>, values, options);
   }
 
   relocate(columns: string[], options: { before?: string; after?: string }): DataFrame {

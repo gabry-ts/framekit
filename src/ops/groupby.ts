@@ -243,12 +243,16 @@ export class GroupBy<
 
       // Build sub-columns and evaluate aggregations
       const int32Indices = new Int32Array(indices);
+      const subColumns = new Map<string, Column<unknown>>();
+      for (const sourceName of this._df.columns) {
+        subColumns.set(sourceName, this._df.col(sourceName).column.take(int32Indices));
+      }
+      const Ctor = this._df.constructor as DataFrameConstructor;
+      const subFrame = new Ctor<Record<string, unknown>>(subColumns, [...this._df.columns]);
+
       for (const name of aggNames) {
         const aggExpr = resolvedSpecs[name]!;
-        const colName = aggExpr.dependencies[0]!;
-        const sourceCol = this._df.col(colName).column;
-        const subCol = sourceCol.take(int32Indices);
-        const result = aggExpr.evaluateColumn(subCol);
+        const result = aggExpr.evaluateFrame(subFrame);
         aggValues.get(name)!.push(result);
       }
     }

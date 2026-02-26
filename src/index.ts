@@ -43,6 +43,7 @@ export { shouldUseParallel } from './engine/parallelism/parallel-agg';
 export type { JoinType, JoinOnMapping, JoinOptions } from './ops/join';
 export type { PivotOptions, PivotAggFunc } from './ops/pivot';
 export type { MeltOptions } from './ops/melt';
+export type { ImputeOptions, ImputeValue } from './ops/impute';
 export {
   Expr,
   NamedExpr,
@@ -60,8 +61,10 @@ export {
   LastAggExpr,
   ListAggExpr,
   ModeAggExpr,
+  CorrAggExpr,
   CoalesceExpr,
   FillNullExpr,
+  op,
 } from './expr/expr';
 export { when, WhenBuilder, ThenBuilder } from './expr/conditional-expr';
 export { LazyFrame, LazyGroupBy } from './lazy';

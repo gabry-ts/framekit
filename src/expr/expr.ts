@@ -524,6 +524,34 @@ export function lit<T>(value: T): Expr<T> {
   return new LiteralExpr<T>(value);
 }
 
+class RowNumberExpr extends Expr<number> {
+  get dependencies(): string[] {
+    return [];
+  }
+
+  toString(): string {
+    return 'rowNumber()';
+  }
+
+  evaluate(df: DataFrame): Series<number> {
+    const values = new Array<number>(df.length);
+    for (let i = 0; i < df.length; i++) {
+      values[i] = i;
+    }
+    return new Series<number>('rowNumber', Float64Column.from(values));
+  }
+}
+
+export const op = {
+  corr(x: Expr<number>, y: Expr<number>): CorrAggExpr {
+    return new CorrAggExpr(x, y);
+  },
+
+  rowNumber(): Expr<number> {
+    return new RowNumberExpr();
+  },
+};
+
 // ── Aggregate Expressions ──
 
 function toComparableKey(v: unknown): string {
@@ -552,11 +580,15 @@ export abstract class AggExpr<T> extends Expr<T> {
   }
 
   evaluate(df: DataFrame): Series<T> {
-    const series = df.col(this._columnName);
-    const result = this.evaluateColumn(series.column);
+    const result = this.evaluateFrame(df);
     const values = [result] as (T | null)[];
     const col = Float64Column.from(values as unknown as (number | null)[]);
     return new Series<T>('', col as unknown as Column<T>);
+  }
+
+  evaluateFrame(df: DataFrame): T | null {
+    const series = df.col(this._columnName);
+    return this.evaluateColumn(series.column);
   }
 
   abstract evaluateColumn(column: Column<unknown>): T | null;
@@ -733,6 +765,68 @@ export class ModeAggExpr<T> extends AggExpr<T> {
       }
     }
     return best;
+  }
+}
+
+export class CorrAggExpr extends AggExpr<number> {
+  protected readonly _aggName = 'corr';
+  private readonly _leftColumn: string;
+  private readonly _rightColumn: string;
+
+  constructor(left: Expr<number>, right: Expr<number>) {
+    const leftDeps = left.dependencies;
+    const rightDeps = right.dependencies;
+    if (leftDeps.length === 0 || rightDeps.length === 0) {
+      throw new Error('corr requires two column expressions');
+    }
+    super(leftDeps[0]!);
+    this._leftColumn = leftDeps[0]!;
+    this._rightColumn = rightDeps[0]!;
+  }
+
+  get dependencies(): string[] {
+    return [this._leftColumn, this._rightColumn];
+  }
+
+  toString(): string {
+    return `corr(${this._leftColumn}, ${this._rightColumn})`;
+  }
+
+  evaluateColumn(_column: Column<unknown>): number | null {
+    return null;
+  }
+
+  evaluateFrame(df: DataFrame): number | null {
+    const x = df.col(this._leftColumn).column;
+    const y = df.col(this._rightColumn).column;
+
+    let n = 0;
+    let sumX = 0;
+    let sumY = 0;
+    let sumXX = 0;
+    let sumYY = 0;
+    let sumXY = 0;
+
+    for (let i = 0; i < df.length; i++) {
+      const xv = x.get(i);
+      const yv = y.get(i);
+      if (typeof xv !== 'number' || typeof yv !== 'number') continue;
+      n++;
+      sumX += xv;
+      sumY += yv;
+      sumXX += xv * xv;
+      sumYY += yv * yv;
+      sumXY += xv * yv;
+    }
+
+    if (n < 2) return null;
+    const num = n * sumXY - sumX * sumY;
+    const denLeft = n * sumXX - sumX * sumX;
+    const denRight = n * sumYY - sumY * sumY;
+    const den = Math.sqrt(denLeft * denRight);
+    if (!Number.isFinite(den) || den === 0) return null;
+    const corr = num / den;
+    return Number.isFinite(corr) ? corr : null;
   }
 }
 
